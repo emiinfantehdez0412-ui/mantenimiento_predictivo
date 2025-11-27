@@ -134,6 +134,27 @@ else:
     ax3.grid(True)
     st.pyplot(fig3)
 
+# 5. MÉTRICAS DE ERROR (MAE)
+# ===============================
+
+st.subheader("📏 Métricas de error del modelo (MAE)")
+
+metric_cols = st.columns(4)
+
+with metric_cols[0]:
+    st.metric("MAE Croston", f"{machine_row['MAE_Croston']:.4f}")
+
+with metric_cols[1]:
+    st.metric("MAE TSB", f"{machine_row['MAE_TSB']:.4f}")
+
+with metric_cols[2]:
+    st.metric("Mejor Modelo", machine_row["Best_Model"])
+
+with metric_cols[3]:
+    st.metric("MAE del Mejor Modelo", f"{machine_row['Best_MAE']:.4f}")
+
+st.write("Estas métricas comparan qué tan bien predijo cada método para esta máquina.")
+
 # ===============================
 # 8. TABLA COMPLETA DE PREDICCIONES
 # ===============================
