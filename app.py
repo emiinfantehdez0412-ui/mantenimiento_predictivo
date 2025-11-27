@@ -61,22 +61,21 @@ st.success(
 st.subheader("📈 Tendencia semanal histórica y predicción (TSB)")
 
 try:
-    forecast_vals = machine_df["Best_Prediction"]
+    if "Weekly_Prediction" in machine_df:
+        forecast_val = machine_df["Weekly_Prediction"]
 
-    if isinstance(forecast_vals, str):
-        forecast_vals = eval(forecast_vals)
+        forecast_vals = np.array([forecast_val] * 7)
 
-    forecast_vals = np.array(forecast_vals)
-
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(forecast_vals, label="Predicción TSB (últimas 7 semanas)", color="red")
-    ax.set_title(f"Predicción semanal - {selected_machine}")
-    ax.set_ylabel("Fallas por semana")
-    ax.set_xlabel("Semana futura (1-7)")
-    ax.grid(True)
-    ax.legend()
-    st.pyplot(fig)
-
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.plot(forecast_vals, label="Predicción TSB", color="red")
+        ax.set_title(f"Predicción semanal - {selected_machine}")
+        ax.set_ylabel("Fallas por semana")
+        ax.set_xlabel("Semana futura (1-7)")
+        ax.grid(True)
+        ax.legend()
+        st.pyplot(fig)
+    else:
+        st.warning("⚠ Esta máquina no tiene columna 'Weekly_Prediction'.")
 except Exception as e:
     st.warning("⚠ No se pudo graficar la predicción TSB.")
     st.write(e)
