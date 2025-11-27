@@ -154,6 +154,7 @@ with metric_cols[3]:
     st.metric("MAE del Mejor Modelo", f"{machine_row['Best_MAE']:.4f}")
 
 st.write("Estas métricas comparan qué tan bien predijo cada método para esta máquina.")
+st.write("Columnas disponibles en final_table:", final_df.columns.tolist())
 
 # ===============================
 # 8. TABLA COMPLETA DE PREDICCIONES
