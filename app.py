@@ -2,158 +2,140 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-st.set_page_config(
-    page_title="Dashboard de Mantenimiento Predictivo",
-    layout="wide"
-)
+st.set_page_config(page_title="Dashboard de Mantenimiento Predictivo", layout="wide")
 
-# ============================================================
-#                       TÍTULO PRINCIPAL
-# ============================================================
+# ---------------------------
+# TÍTULO PRINCIPAL
+# ---------------------------
 st.title("🔧 Dashboard de Mantenimiento Predictivo")
-st.write("Predicciones basadas en clustering + TSB para fallas semanales.")
+st.markdown("Predicciones basadas en clustering + TSB para fallas semanales.")
 
-# ============================================================
-#                   CARGA DE ARCHIVOS
-# ============================================================
+# ---------------------------
+# CARGA DE ARCHIVOS
+# ---------------------------
 st.sidebar.header("📂 Carga de archivos")
 
-original_file = st.sidebar.file_uploader(
-    "Sube la base ORIGINAL (Mantenimiento FLEX.xlsx)",
-    type=["xlsx"],
-    key="original"
-)
+# Archivo original (Mantenimiento FLEX)
+original_file = st.sidebar.file_uploader("Sube la base ORIGINAL (Mantenimiento FLEX.xlsx)", type=["xlsx"])
 
-processed_file = st.sidebar.file_uploader(
-    "Sube la tabla PROCESADA (final_table.xlsx)",
-    type=["xlsx"],
-    key="processed"
-)
+# Archivo procesado desde Colab
+processed_file = st.sidebar.file_uploader("Sube la tabla PROCESADA (final_table.xlsx)", type=["xlsx"])
 
-if original_file:
-    st.sidebar.success("Base original cargada correctamente. ✅")
-
-if processed_file:
-    st.sidebar.success("Tabla procesada cargada correctamente. ✅")
-
-# No continuar hasta cargar ambos archivos
-if not original_file or not processed_file:
-    st.warning("Por favor sube ambos archivos para continuar.")
+# Si no están cargados ambos, detenemos
+if not original_file:
+    st.warning("📄 Sube la base ORIGINAL para continuar.")
     st.stop()
 
-# ============================================================
-#         CARGA DE DATAFRAMES DESDE LOS ARCHIVOS
-# ============================================================
+if not processed_file:
+    st.warning("📄 Sube la tabla PROCESADA para continuar.")
+    st.stop()
+
+# Cargar archivos
 df_original = pd.read_excel(original_file)
 df_processed = pd.read_excel(processed_file)
 
-# Nombres obligatorios que DEBEN existir en el archivo procesado
-expected_processed_cols = [
-    "Machine", "Cluster", "Cluster_Name", "Weekly_Prediction",
-    "Avg_TBF", "Maintenance_Recommended",
-    "MAE_Croston", "MAE_TSB", "Best_Model", "Best_MAE"
-]
+required_cols = ["Machine", "Cluster", "Cluster_Name", "Weekly_Prediction",
+                 "Avg_TBF", "Maintenance_Recommended", "MAE_Croston", "MAE_TSB",
+                 "Best_Model", "Best_MAE"]
 
-missing_cols = [c for c in expected_processed_cols if c not in df_processed.columns]
+missing_cols = [c for c in required_cols if c not in df_processed.columns]
 
 if missing_cols:
-    st.error(f"❌ La tabla procesada NO contiene todas las columnas requeridas:\n{missing_cols}")
+    st.error(f"❌ La tabla procesada NO contiene las columnas requeridas: {missing_cols}")
     st.stop()
 
-# ============================================================
-#                   FILTROS LATERALES
-# ============================================================
-st.sidebar.header("🎛 Filtros")
+st.success("✔ Archivos cargados correctamente.")
 
-cluster_list = sorted(df_processed["Cluster"].unique())
-cluster_select = st.sidebar.selectbox("Selecciona un clúster:", cluster_list)
+# ---------------------------
+# FILTROS
+# ---------------------------
+clusters = sorted(df_processed["Cluster"].unique())
+cluster_selected = st.sidebar.selectbox("Selecciona un clúster:", clusters)
 
-machines_in_cluster = df_processed[df_processed["Cluster"] == cluster_select]["Machine"]
-machine_select = st.sidebar.selectbox("Selecciona una máquina:", machines_in_cluster)
+machines_cluster = df_processed[df_processed["Cluster"] == cluster_selected]["Machine"].unique()
+machine_selected = st.sidebar.selectbox("Selecciona una máquina:", machines_cluster)
 
-# Extra: filtros desde la base original
-shift_list = sorted(df_original["Shift"].dropna().unique())
-shift_select = st.sidebar.multiselect("Filtro por Shift (opcional):", shift_list)
+# ---------------------------
+# SELECCIÓN DE FILA DE LA MÁQUINA
+# ---------------------------
+machine_row = df_processed[df_processed["Machine"] == machine_selected].iloc[0]
 
-eq_list = sorted(df_original["EQ Type"].dropna().unique())
-eq_select = st.sidebar.multiselect("Filtro por EQ Type (opcional):", eq_list)
-
-# ============================================================
-#            SELECCIÓN DE LA MÁQUINA EN LA TABLA PROCESADA
-# ============================================================
-machine_row = df_processed[df_processed["Machine"] == machine_select].iloc[0]
-
-# ============================================================
-#        SECCIÓN 1: MANTENIMIENTO RECOMENDADO
-# ============================================================
-st.subheader("🛠 Mantenimiento recomendado")
+# ---------------------------
+# SECCIÓN 1: Mantenimiento Recomendado
+# ---------------------------
+st.header("🛠️ Mantenimiento recomendado")
 
 maintenance_days = machine_row["Maintenance_Recommended"]
-st.success(f"🔧 Se recomienda mantenimiento en aproximadamente **{maintenance_days:.1f} días**.")
 
-# ============================================================
-#      SECCIÓN 2: TENDENCIA HISTÓRICA DE LA MÁQUINA (ORIGINAL)
-# ============================================================
-st.subheader("📈 Tendencia histórica por máquina (dataset original)")
-
-df_machine_hist = df_original[df_original["Machine Name"] == machine_select]
-
-if shift_select:
-    df_machine_hist = df_machine_hist[df_machine_hist["Shift"].isin(shift_select)]
-
-if eq_select:
-    df_machine_hist = df_machine_hist[df_machine_hist["EQ Type"].isin(eq_select)]
-
-if df_machine_hist.empty:
-    st.warning("⚠ No hay datos históricos con los filtros seleccionados.")
+# Validación robusta
+if pd.notnull(maintenance_days) and isinstance(maintenance_days, (int, float)):
+    st.success(f"🔧 Se recomienda mantenimiento en aproximadamente **{maintenance_days:.1f} días**.")
 else:
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df_machine_hist["Date"], df_machine_hist["Downtime"], color="blue")
-    ax.set_title(f"Histórico de fallas – {machine_select}")
-    ax.set_xlabel("Fecha")
-    ax.set_ylabel("Downtime")
-    st.pyplot(fig)
+    st.warning("⚠ No hay suficiente información para calcular el mantenimiento recomendado.")
 
-# ============================================================
-#       SECCIÓN 3: PREDICCIÓN FUTURA POR CLÚSTER
-# ============================================================
-st.subheader("🔮 Predicción semanal futura por clúster")
+# ---------------------------
+# SECCIÓN 2: Tendencia semanal histórica + predicción TSB
+# ---------------------------
+st.header("📉 Tendencia semanal histórica y predicción (TSB)")
 
-cluster_rows = df_processed[df_processed["Cluster"] == cluster_select]
+if "Best_Prediction" in df_processed.columns:
+    # Best_Prediction es LISTA → convertir
+    pred_list = machine_row["Best_Prediction"]
 
-future_vals = cluster_rows["Weekly_Prediction"].head(7).values
+    if isinstance(pred_list, str):
+        try:
+            pred_list = eval(pred_list)
+        except:
+            pred_list = None
 
-fig2, ax2 = plt.subplots(figsize=(10, 4))
-ax2.plot(range(1, len(future_vals)+1), future_vals, marker="o", color="orange")
-ax2.set_title(f"Predicción TSB – Clúster {cluster_select}")
-ax2.set_xlabel("Semana futura")
-ax2.set_ylabel("Pred. de fallas")
-st.pyplot(fig2)
+    if isinstance(pred_list, list) and len(pred_list) > 0:
+        plt.figure(figsize=(10,4))
+        plt.plot(pred_list, marker="o", label="Predicción semanal (TSB)")
+        plt.xlabel("Semana futura")
+        plt.ylabel("Fallas esperadas")
+        plt.legend()
+        st.pyplot(plt)
+    else:
+        st.warning("⚠ No se pudo graficar la predicción TSB.")
+else:
+    st.warning("⚠ La columna 'Best_Prediction' no se encuentra en la tabla procesada.")
 
-# ============================================================
-#       SECCIÓN 4: MÉTRICAS DE ERROR DEL MODELO
-# ============================================================
-st.subheader("📉 Métricas de error del modelo (MAE)")
+# ---------------------------
+# SECCIÓN 3: Métricas de error (MAE)
+# ---------------------------
+st.header("📏 Métricas de error del modelo (MAE)")
 
 mae_croston = machine_row["MAE_Croston"]
 mae_tsb = machine_row["MAE_TSB"]
 best_model = machine_row["Best_Model"]
 best_mae = machine_row["Best_MAE"]
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
-with col1:
-    st.metric("MAE Croston", f"{mae_croston:.4f}")
+def format_mae(val):
+    if pd.notnull(val) and isinstance(val, (float, int)):
+        return f"{val:.6f}"
+    return "N/A"
 
-with col2:
-    st.metric("MAE TSB", f"{mae_tsb:.4f}")
+col1.metric("MAE Croston", format_mae(mae_croston))
+col2.metric("MAE TSB", format_mae(mae_tsb))
+col3.metric("Mejor Modelo", str(best_model))
+col4.metric("MAE del Mejor Modelo", format_mae(best_mae))
 
-with col3:
-    st.metric(f"Mejor modelo ({best_model})", f"{best_mae:.4f}")
-
-# ============================================================
-#       SECCIÓN 5: TABLA COMPLETA DE PREDICCIONES
-# ============================================================
-st.subheader("📄 Tabla completa de predicciones")
-
+# ---------------------------
+# SECCIÓN 4: Tabla completa
+# ---------------------------
+st.header("📋 Tabla completa de predicciones")
 st.dataframe(df_processed)
+
+# ---------------------------
+# SECCIÓN 5: Información complementaria del archivo original
+# ---------------------------
+st.header("🗂 Datos originales de la máquina seleccionada")
+
+machine_original = df_original[df_original["Machine Name"] == machine_selected]
+
+if machine_original.empty:
+    st.info("ℹ No se encontraron registros en el archivo original para esta máquina.")
+else:
+    st.dataframe(machine_original)
