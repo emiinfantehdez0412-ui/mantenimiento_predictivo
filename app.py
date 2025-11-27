@@ -1,75 +1,88 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Dashboard de Mantenimiento Predictivo", layout="wide")
 
-st.title("🔧 Dashboard de Mantenimiento Predictivo")
-st.write("Visualización dinámica basada en clustering y predicciones TSB.")
-
-# --------------------------
-# LOAD FINAL TABLE
-# --------------------------
+# ==============================
+#  1. Cargar datos
+# ==============================
 @st.cache_data
-def load_final_table():
-    return pd.read_excel("final_table.xlsx")
+def load_data():
+    try:
+        df = pd.read_excel("final_table.xlsx")
+        return df
+    except:
+        st.error("❌ No se encontró el archivo final_table.xlsx en el repositorio.")
+        st.stop()
 
-final_table = load_final_table()
+df = load_data()
 
-# --------------------------
-# SIDEBAR FILTERS
-# --------------------------
-st.sidebar.header("Filtros")
+# ==============================
+# Título
+# ==============================
+st.title("📊 Dashboard de Mantenimiento Predictivo")
+st.write("Predicciones semanales, clústers de riesgo y calendario de mantenimiento recomendado.")
 
-clusters = sorted(final_table["Cluster"].unique())
-cluster_sel = st.sidebar.selectbox("Selecciona un Cluster:", clusters)
+# ==============================
+# 2. Barra lateral: filtros
+# ==============================
+st.sidebar.header("🔍 Filtros")
 
-machines = final_table[final_table["Cluster"] == cluster_sel]["Machine"].unique()
-machine_sel = st.sidebar.selectbox("Selecciona una Máquina:", machines)
+clusters = sorted(df["Cluster"].unique())
+selected_cluster = st.sidebar.selectbox("Selecciona un clúster:", clusters)
 
-# --------------------------
-# SHOW MACHINE INFO
-# --------------------------
-machine_data = final_table[final_table["Machine"] == machine_sel].iloc[0]
+machines_cluster = df[df["Cluster"] == selected_cluster]["Machine"].unique()
+selected_machine = st.sidebar.selectbox("Selecciona una máquina:", machines_cluster)
 
-st.subheader(f"📌 Información de la máquina: **{machine_sel}**")
-col1, col2, col3 = st.columns(3)
+machine_df = df[df["Machine"] == selected_machine].iloc[0]
 
-with col1:
-    st.metric("Cluster", int(machine_data["Cluster"]))
-with col2:
-    st.metric("Riesgo", machine_data["Cluster_Name"])
-with col3:
-    st.metric("Fallos semanales estimados", f"{machine_data['Weekly_Prediction']:.4f}")
+# ==============================
+# 3. Tarjetas de resumen
+# ==============================
+st.subheader(f"📌 Resumen — {selected_machine}")
 
-st.divider()
+col1, col2, col3, col4 = st.columns(4)
 
-# --------------------------
-# MAINTENANCE RECOMMENDATION
-# --------------------------
-st.subheader("🛠️ Recomendación de mantenimiento preventivo")
+col1.metric("Cluster", machine_df["Cluster"])
+col2.metric("Clasificación", machine_df["Cluster_Name"])
+col3.metric("Predicción semanal esperada", f"{machine_df['Weekly_Prediction']:.5f}")
+col4.metric("TBF promedio (semanas)", f"{machine_df['Avg_TBF']:.2f}")
 
-st.info(
-    f"**Dar mantenimiento cada:** {machine_data['Maintenance_Recommended']} días\n\n"
-    f"(Basado en TBP promedio = {machine_data['Avg_TBF']:.2f})"
+# Recomendación
+st.success(
+    f"🛠 **Mantenimiento recomendado en aproximadamente:** {machine_df['Maintenance_Recommended']}"
 )
 
-# --------------------------
-# SHOW FORECAST ARRAY
-# --------------------------
-st.subheader("📈 Predicción semanal (TSB)")
+# ==============================
+# 4. Gráfica de tendencia semanal (Train/Test/Forecast)
+# ==============================
+st.subheader("📈 Tendencia semanal histórica y predicción (TSB)")
 
-pred = machine_data["Best_Prediction"]
+try:
+    forecast_vals = machine_df["Best_Prediction"]
 
-if isinstance(pred, str):
-    try:
-        pred = eval(pred)  # convert string list to real list
-    except:
-        pred = [0]
+    if isinstance(forecast_vals, str):
+        forecast_vals = eval(forecast_vals)
 
-fig, ax = plt.subplots()
-ax.plot(pred, marker="o", color="orange")
-ax.set_title(f"Pronóstico TSB – {machine_sel}")
-ax.set_xlabel("Semanas futuras")
-ax.set_ylabel("Fallos esperados")
-st.pyplot(fig)
+    forecast_vals = np.array(forecast_vals)
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(forecast_vals, label="Predicción TSB (últimas 7 semanas)", color="red")
+    ax.set_title(f"Predicción semanal - {selected_machine}")
+    ax.set_ylabel("Fallas por semana")
+    ax.set_xlabel("Semana futura (1-7)")
+    ax.grid(True)
+    ax.legend()
+    st.pyplot(fig)
+
+except Exception as e:
+    st.warning("⚠ No se pudo graficar la predicción TSB.")
+    st.write(e)
+
+# ==============================
+# 5. Mostrar tabla completa
+# ==============================
+st.subheader("📄 Tabla completa de predicciones")
+st.dataframe(df)
