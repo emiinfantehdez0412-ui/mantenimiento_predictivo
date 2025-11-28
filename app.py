@@ -72,9 +72,22 @@ if "Date" in df_original.columns:
 # 5. VALIDAR COLUMNA FAILURES
 # ============================================================
 
-if "Failures" not in df_original.columns:
-    # Si no existe, la creo tomando 1 por cada fila (emergencia)
-    df_original["Failures"] = 1
+# Crear columna Failures = 1 por cada evento
+df_original["Failures"] = 1
+
+# Importante: agrupar por fecha antes de graficar
+df_machine = (
+    df_filt[df_filt["Machine Name"] == machine_sel]
+    .groupby("Date")["Failures"]
+    .sum()
+    .reset_index()
+)
+
+df_cluster_grouped = (
+    df_filt[df_filt["Cluster"] == cluster_sel]
+    .groupby("Date")["Failures"]
+    .sum()
+)
 
 # ============================================================
 # 6. FILTROS
