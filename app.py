@@ -36,11 +36,17 @@ if df_original is not None and df_processed is not None:
     # --------------------------------------------------
     # 3. ASEGURAR QUE EXISTE COLUMNA "Date"
     # --------------------------------------------------
-    if "Fecha" in df_original.columns:
-        df_original["Date"] = pd.to_datetime(df_original["Fecha"])
-    elif "Date" not in df_original.columns:
-        st.error("⚠ ERROR: No se encontró una columna Fecha o Date en la base ORIGINAL.")
-        st.stop()
+    # Asegurar columna Date 100% limpia
+if "Fecha" in df_original.columns:
+    df_original["Date"] = df_original["Fecha"]
+elif "Date" not in df_original.columns:
+    st.error("⚠ ERROR: La base original no tiene columna Fecha o Date.")
+    st.stop()
+
+# Convertir a datetime y limpiar
+df_original["Date"] = pd.to_datetime(df_original["Date"], errors="coerce")
+df_original = df_original.dropna(subset=["Date"])
+df_original = df_original.sort_values("Date")
 
     # --------------------------------------------------
     # 4. FILTROS
