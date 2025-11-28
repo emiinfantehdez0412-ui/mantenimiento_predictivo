@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objs as go
 
@@ -26,39 +27,23 @@ def load_data():
 
 df_final, df_events = load_data()
 
-# ===============================
-# FIX: CONVERTIR Weekly_Prediction A NUMÉRICO
-# ===============================
+# Convertir predicciones a número
 df_final["Weekly_Prediction"] = pd.to_numeric(
     df_final["Weekly_Prediction"], errors="coerce"
 ).fillna(0)
 
-# Convertimos mantenimiento recomendado a string para evitar errores
 df_final["Maintenance_Recommended"] = df_final["Maintenance_Recommended"].astype(str)
 
-# ===========================================
-# NORMALIZACIÓN DE PREDICCIONES PARA EL GAUGE
-# ===========================================
-
-# 1) Convertir a número real
-df_final["Weekly_Prediction"] = pd.to_numeric(
-    df_final["Weekly_Prediction"], errors="coerce"
-).fillna(0)
-
-# 2) Escalar predicciones para visualización
-# (porque tus valores reales son como 1.2e-40 = invisibles)
-df_final["Weekly_Pred_Scaled"] = df_final["Weekly_Prediction"] * 1_000_000_000_000
-
 # ===============================
-# SIDEBAR FILTERS – CASCADA + BADGE DE RIESGO
+# SIDEBAR FILTERS
 # ===============================
-
 with st.sidebar:
     st.header("🔍 Filtros")
 
     clusters = df_final["Cluster_Name"].unique()
     cluster_selected = st.selectbox("Selecciona un clúster:", clusters)
 
+    # Badge de riesgo
     if "HIGH" in cluster_selected.upper():
         risk_color = "#E74C3C"
         risk_text = "🔴 HIGH RISK"
@@ -79,8 +64,7 @@ with st.sidebar:
             font-weight:bold;">
             {risk_text}
         </div>
-        """,
-        unsafe_allow_html=True
+        """, unsafe_allow_html=True
     )
 
     filtered_machines = (
@@ -90,7 +74,7 @@ with st.sidebar:
     machine_selected = st.selectbox("Selecciona una máquina:", filtered_machines)
 
 # ===============================
-# CARDS FUNCTION
+# CARDS
 # ===============================
 def metric_card(title, value, color="#2E86C1"):
     st.markdown(
@@ -139,6 +123,7 @@ with tab1:
 
     st.markdown("---")
 
+
 # ===============================
 # HISTORICAL + FORECAST (MACHINE)
 # ===============================
@@ -166,7 +151,7 @@ else:
         y=failures_by_month["Failures"],
         mode="lines+markers",
         name="Fallas históricas",
-        line=dict(color="#4DA3FF")
+        line=dict(color="#4DA3FF", width=3)
     ))
 
     fig_m.add_trace(go.Scatter(
@@ -175,11 +160,11 @@ else:
         mode="markers+text",
         text=["Forecast"],
         textposition="top center",
-        name="Predicción",
         marker=dict(color="orange", size=12)
     ))
 
     st.plotly_chart(fig_m, use_container_width=True)
+
 
 # ===============================
 # HISTORICAL + FORECAST (CLUSTER)
@@ -211,7 +196,7 @@ else:
         y=failures_cluster["Failures"],
         mode="lines+markers",
         name="Fallas históricas",
-        line=dict(color="#008080")
+        line=dict(color="#008080", width=3)
     ))
 
     fig_c.add_trace(go.Scatter(
@@ -225,18 +210,19 @@ else:
 
     st.plotly_chart(fig_c, use_container_width=True)
 
+
 # ===============================
 # TAB 2 — CLUSTER VIEW
 # ===============================
 with tab2:
     st.markdown(f"## 🏭 Máquinas en: **{cluster_selected}**")
-
     fig2 = px.bar(
         cluster_df, x="Machine", y="Num_Failures",
         color="Num_Failures", color_continuous_scale="Blues",
         title="Fallos por Máquina"
     )
     st.plotly_chart(fig2, use_container_width=True)
+
 
 # ===============================
 # TAB 3 — EQ TYPE
@@ -251,6 +237,7 @@ with tab3:
                   color="Downtime", color_continuous_scale="Tealgrn")
     st.plotly_chart(fig3, use_container_width=True)
 
+
 # ===============================
 # TAB 4 — RAW TABLE
 # ===============================
@@ -258,20 +245,17 @@ with tab4:
     st.markdown("## 📊 Tabla del Clúster Seleccionado")
     st.dataframe(cluster_df)
 
-# ======================================
-# GAUGE – Nivel de Riesgo Normalizado
-# ======================================
 
+# ======================================
+# 🎯 GAUGE – NIVEL DE RIESGO
+# ======================================
 st.markdown("## 🎯 Nivel de Riesgo (Gauge)")
 
-# Valor real original
 pred_fail_real = float(m["Weekly_Prediction"])
+pred_for_calc = max(pred_fail_real, 1e-40)
 
-# Evitar cero absoluto para log
-pred_for_calc = max(pred_fail_real, 1e-12)
-
-# Normalización visual (NO afecta tus datos)
-risk_score = (np.log10(pred_for_calc + 1e-12) + 12) / 12
+risk_score = (np.log10(pred_for_calc) + 40) / 40
+risk_score = max(0, min(risk_score, 1))
 risk_percent = round(risk_score * 100, 2)
 
 fig_gauge = go.Figure(go.Indicator(
@@ -291,14 +275,27 @@ fig_gauge = go.Figure(go.Indicator(
 
 st.plotly_chart(fig_gauge, use_container_width=True)
 
+
 # ======================================
-# PLAN DE MANTENIMIENTO VISUAL (CARDS)
+# 🛠 PLAN DE MANTENIMIENTO VISUAL
 # ======================================
 st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
 
 maint_days = m["Maintenance_Recommended"]
-eq_type_machine = eq_type_machine
 
+events_machine = df_events[df_events["Machine Name"] == machine_selected]
+if not events_machine.empty:
+    eq_type_machine = (
+        events_machine.groupby("EQ Type")["Downtime"]
+        .count()
+        .reset_index()
+        .sort_values(by="Downtime", ascending=False)
+        .iloc[0]["EQ Type"]
+    )
+else:
+    eq_type_machine = "No registrado"
+
+# ---- CARDS FILA 1 ----
 colA, colB = st.columns(2)
 
 with colA:
@@ -325,7 +322,7 @@ with colB:
     </div>
     """, unsafe_allow_html=True)
 
-# Segunda fila
+# ---- CARDS FILA 2 ----
 colC, colD = st.columns(2)
 
 with colC:
@@ -336,7 +333,7 @@ with colC:
         border-radius:10px;
         color:white;">
         <h3>📉 Predicción de fallas esta semana</h3>
-        <p style="font-size:22px;"><b>{pred_fail_real:.10f} (valor real)</b></p>
+        <p style="font-size:22px;"><b>{pred_fail_real:.10f}</b> (valor real)</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -352,10 +349,11 @@ with colD:
     </div>
     """, unsafe_allow_html=True)
 
-# Estado
+
+# ESTADO DEL RIESGO
 if risk_percent > 70:
-    st.markdown("🚨 <b>Alerta crítica</b>: probabilidad alta de falla.", unsafe_allow_html=True)
+    st.markdown("🚨 <b>Alerta crítica</b>: probabilidad ALTA de falla.", unsafe_allow_html=True)
 elif risk_percent > 40:
-    st.markdown("⚠️ <b>Atención</b>: riesgo medio.", unsafe_allow_html=True)
+    st.markdown("⚠️ <b>Atención</b>: riesgo MEDIO.", unsafe_allow_html=True)
 else:
     st.markdown("🟩 <b>Estable</b>: baja probabilidad de falla.", unsafe_allow_html=True)
