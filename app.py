@@ -1,200 +1,188 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
+import plotly.express as px
 
-st.set_page_config(page_title="Dashboard de Mantenimiento Predictivo", layout="wide")
+# =====================================================================
+# PAGE CONFIG
+# =====================================================================
 
-st.title("🛠️ Dashboard de Mantenimiento Predictivo")
-
-# ============================================================
-# 1. CARGA DE ARCHIVOS
-# ============================================================
-
-st.sidebar.header("📂 Carga de archivos")
-
-uploaded_original = st.sidebar.file_uploader("Sube la base ORIGINAL (Mantenimiento_FLEX.xlsx)", type=["xlsx"])
-uploaded_final = st.sidebar.file_uploader("Sube la tabla PROCESADA (final_table.xlsx)", type=["xlsx"])
-
-if uploaded_original:
-    df_original = pd.read_excel(uploaded_original)
-    st.sidebar.success("Base original cargada correctamente. ✓")
-else:
-    st.stop()
-
-if uploaded_final:
-    df_final = pd.read_excel(uploaded_final)
-    st.sidebar.success("Tabla procesada cargada correctamente. ✓")
-else:
-    st.stop()
-
-# ============================================================
-# 2. NORMALIZACIÓN Y UNIFICACIÓN DE MACHINE + CLUSTER
-# ============================================================
-
-df_original["Machine Name"] = df_original["Machine Name"].astype(str).str.strip().str.lower()
-df_final["Machine"] = df_final["Machine"].astype(str).str.strip().str.lower()
-
-df_cluster_map = df_final[["Machine", "Cluster"]].drop_duplicates()
-
-df_original = df_original.merge(
-    df_cluster_map,
-    left_on="Machine Name",
-    right_on="Machine",
-    how="left"
+st.set_page_config(
+    page_title="Dashboard FLEX – Mantenimiento Predictivo",
+    layout="wide"
 )
 
-df_original.drop(columns=["Machine"], inplace=True)
+st.title("🛠️ Dashboard de Mantenimiento Predictivo – FLEX")
 
-if df_original["Cluster"].isna().all():
-    st.error("❌ No se pudieron unir los clústeres. Revisa los nombres de máquina.")
-    st.stop()
 
-# ============================================================
-# 3. NORMALIZAR FECHA + CREAR FALLAS (opción A)
-# ============================================================
+# =====================================================================
+# LOAD DATA
+# =====================================================================
 
-if "Fecha" in df_original.columns:
-    df_original.rename(columns={"Fecha": "Date"}, inplace=True)
+@st.cache_data
+def load_data():
+    df_final = pd.read_excel("final_table_FIXED.xlsx")
+    df_events = pd.read_excel("Mantenimiento_FLEX.xlsx")
+    df_raw = pd.read_csv("historical_failures.csv")  # si no la tienes la quitamos
+    return df_final, df_events, df_raw
 
-df_original["Date"] = pd.to_datetime(df_original["Date"], errors="coerce")
+df_final, df_events, df_raw = load_data()
 
-# 👉 Opción A: cada fila = 1 falla
-df_original["Failures"] = 1
 
-# ============================================================
-# 4. FILTROS
-# ============================================================
+# =====================================================================
+# SIDEBAR FILTERS
+# =====================================================================
 
-st.sidebar.header("🎛️ Filtros")
+st.sidebar.header("Filtros")
 
-cluster_list = sorted(df_original["Cluster"].dropna().unique())
-cluster_sel = st.sidebar.selectbox("Selecciona un clúster:", cluster_list)
+machines = df_final["Machine"].unique()
+clusters = df_final["Cluster_Name"].unique()
 
-machines_list = sorted(df_original[df_original["Cluster"] == cluster_sel]["Machine Name"].unique())
-machine_sel = st.sidebar.selectbox("Selecciona una máquina:", machines_list)
+machine_selected = st.sidebar.selectbox("Selecciona una máquina:", machines)
+cluster_selected = st.sidebar.selectbox("Selecciona un clúster:", clusters)
 
-shift_list = sorted(df_original["Shift"].dropna().unique())
-shift_sel = st.sidebar.selectbox("Selecciona turno (Shift):", ["Todos"] + list(shift_list))
 
-eq_types = df_original["EQ Type"].dropna().unique()
-eq_sel = st.sidebar.selectbox("Selecciona EQ Type:", ["Todos"] + list(eq_types))
+# =====================================================================
+# MACHINE SUMMARY
+# =====================================================================
 
-df_filt = df_original.copy()
+st.subheader(f"📍 Resumen de: **{machine_selected}**")
 
-if shift_sel != "Todos":
-    df_filt = df_filt[df_filt["Shift"] == shift_sel]
+m = df_final[df_final["Machine"] == machine_selected].iloc[0]
 
-if eq_sel != "Todos":
-    df_filt = df_filt[df_filt["EQ Type"] == eq_sel]
+col1, col2, col3, col4 = st.columns(4)
 
-# ============================================================
-# 5. MANTENIMIENTO RECOMENDADO
-# ============================================================
+with col1:
+    st.metric("Failure Rate", round(m["Failure_Rate"], 4))
 
-try:
-    rec_days = float(df_final["Weekly_Prediction"].mean())
-    st.success(f"🟢 Mantenimiento recomendado en **{round(rec_days,1)} días**.")
-except:
-    st.warning("No se pudo calcular el mantenimiento recomendado.")
+with col2:
+    st.metric("Avg Severity", round(m["Avg_Severity"], 4))
 
-# ============================================================
-# 6. GRÁFICO POR MÁQUINA (histórico + predicciones)
-# ============================================================
+with col3:
+    st.metric("Total Downtime", round(m["Total_Downtime"], 2))
 
-st.subheader(f"📉 Tendencia histórica y predicción (TSB & Croston) – Máquina: {machine_sel}")
+with col4:
+    st.metric("Número de Fallas", int(m["Num_Failures"]))
 
-df_machine = df_filt[df_filt["Machine Name"] == machine_sel].copy()
-df_machine = df_machine.sort_values("Date")
 
-df_machine_grouped = df_machine.groupby("Date")["Failures"].sum()
+# =====================================================================
+# HISTORICAL TREND (BY MACHINE)
+# =====================================================================
 
-# Extraer predicciones
-try:
-    row = df_final[df_final["Machine"] == machine_sel].iloc[0]
-    pred_tsb = row["Weekly_Prediction"]
-    pred_cros = row["Weekly_Prediction"]  # si hay otra columna cámbiala
-except:
-    pred_tsb = pred_cros = None
+st.subheader("📈 Tendencia Histórica – Downtime por Máquina")
 
-fig_m = go.Figure()
+machine_hist = df_events[df_events["Machine Name"] == machine_selected]
 
-fig_m.add_trace(go.Scatter(
-    x=df_machine_grouped.index,
-    y=df_machine_grouped.values,
-    mode="lines+markers",
-    name="Histórico de Fallas",
-    line=dict(color="#00e5ff")
-))
+if machine_hist.empty:
+    st.warning("No hay datos históricos para esta máquina.")
+else:
+    fig = px.line(
+        machine_hist,
+        x="Date",
+        y="Downtime",
+        title=f"Tendencia de Downtime – {machine_selected}"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-if pred_cros is not None:
-    fig_m.add_trace(go.Scatter(
-        x=[df_machine_grouped.index.max() + pd.Timedelta(days=7)],
-        y=[pred_cros],
-        mode="markers",
-        name="Predicción Croston",
-        marker=dict(color="magenta", size=12)
-    ))
 
-if pred_tsb is not None:
-    fig_m.add_trace(go.Scatter(
-        x=[df_machine_grouped.index.max() + pd.Timedelta(days=7)],
-        y=[pred_tsb],
-        mode="markers",
-        name="Predicción TSB",
-        marker=dict(color="yellow", size=12)
-    ))
+# =====================================================================
+# PREDICTION – MACHINE LEVEL
+# =====================================================================
 
-fig_m.update_layout(height=350, xaxis_title="Fecha", yaxis_title="Fallas")
-st.plotly_chart(fig_m, use_container_width=True)
+st.markdown("### 🔮 Predicción y Mantenimiento Recomendado")
 
-# ============================================================
-# 7. GRÁFICO POR CLÚSTER
-# ============================================================
+col1, col2 = st.columns(2)
 
-st.subheader(f"📊 Tendencia histórica por CLÚSTER – {cluster_sel}")
+with col1:
+    st.metric("Weekly Prediction", round(m["Weekly_Prediction"], 3))
 
-df_cluster = df_filt[df_filt["Cluster"] == cluster_sel].copy()
-df_cluster_grouped = df_cluster.groupby("Date")["Failures"].sum()
+with col2:
+    st.success(f"Mantenimiento Recomendado: **{m['Maintenance_Recommended']}**")
 
-fig_c = go.Figure()
 
-fig_c.add_trace(go.Scatter(
-    x=df_cluster_grouped.index,
-    y=df_cluster_grouped.values,
-    mode="lines+markers",
-    name="Histórico Cluster",
-    line=dict(color="orange")
-))
+# =====================================================================
+# MODEL METRICS
+# =====================================================================
 
-try:
-    pred_cluster = df_final[df_final["Cluster"] == cluster_sel]["Weekly_Prediction"].mean()
-    fig_c.add_trace(go.Scatter(
-        x=[df_cluster_grouped.index.max() + pd.Timedelta(days=7)],
-        y=[pred_cluster],
-        mode="markers",
-        name="Predicción Cluster",
-        marker=dict(color="yellow", size=12)
-    ))
-except:
-    pass
+st.subheader("📊 Métricas del Modelo (Mejor Modelo Seleccionado)")
 
-fig_c.update_layout(height=350, xaxis_title="Fecha", yaxis_title="Fallas")
-st.plotly_chart(fig_c, use_container_width=True)
+col1, col2, col3 = st.columns(3)
 
-# ============================================================
-# 8. MÉTRICAS
-# ============================================================
+with col1:
+    st.metric("Modelo", m["Best_Model"])
 
-st.subheader("📐 Métricas del modelo")
+with col2:
+    st.metric("Best MAE", round(m["Best_MAE"], 5))
 
-try:
-    row = df_final[df_final["Machine"] == machine_sel].iloc[0]
-    col1, col2, col3 = st.columns(3)
+with col3:
+    st.metric("Predicción Final", round(m["Best_Prediction"], 5))
 
-    col1.metric("MAE Croston", round(row["MAE_Croston"], 3))
-    col2.metric("MAE TSB", round(row["MAE_TSB"], 3))
-    col3.metric("Mejor Modelo", "Croston" if row["MAE_Croston"] <= row["MAE_TSB"] else "TSB")
 
-except:
-    st.warning("No hay métricas disponibles para esta máquina.")
+# =====================================================================
+# CLUSTER ANALYSIS
+# =====================================================================
+
+st.subheader(f"🏭 Análisis por Clúster – {cluster_selected}")
+
+cluster_df = df_final[df_final["Cluster_Name"] == cluster_selected]
+
+fig2 = px.bar(
+    cluster_df,
+    x="Machine",
+    y="Num_Failures",
+    title=f"Fallos por Máquina en el Clúster {cluster_selected}",
+)
+st.plotly_chart(fig2, use_container_width=True)
+
+
+# =====================================================================
+# EQ TYPE THAT FAILS THE MOST
+# =====================================================================
+
+st.subheader("🤖 EQ Type que más falla")
+
+eq_fail = df_events.groupby("EQ Type")["Downtime"].count().reset_index()
+eq_fail = eq_fail.sort_values(by="Downtime", ascending=False)
+
+fig3 = px.bar(
+    eq_fail,
+    x="EQ Type",
+    y="Downtime",
+    title="Fallas por Tipo de Equipo (EQ Type)"
+)
+st.plotly_chart(fig3, use_container_width=True)
+
+top_eq = eq_fail.iloc[0]
+
+st.warning(
+    f"**El EQ Type que MÁS falla es:** `{top_eq['EQ Type']}` "
+    f"con **{top_eq['Downtime']}** fallas."
+)
+
+
+# =====================================================================
+# TABLE OF THE SELECTED CLUSTER
+# =====================================================================
+
+st.subheader("📘 Tabla Completa del Clúster Seleccionado")
+
+st.dataframe(cluster_df[
+    [
+        "Machine",
+        "Failure_Rate",
+        "Num_Failures",
+        "Weekly_Prediction",
+        "Maintenance_Recommended",
+        "Best_Model",
+        "Best_MAE"
+    ]
+])
+
+
+# =====================================================================
+# RAW HISTORICAL TABLE (OPTIONAL)
+# =====================================================================
+
+st.subheader("📄 Datos Históricos (Raw)")
+
+with st.expander("Mostrar/Ocultar"):
+    st.dataframe(df_raw)
