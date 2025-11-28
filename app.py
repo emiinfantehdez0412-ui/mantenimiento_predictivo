@@ -258,59 +258,104 @@ with tab4:
     st.markdown("## 📊 Tabla del Clúster Seleccionado")
     st.dataframe(cluster_df)
 
-# ===============================
-# GAUGE — LEVEL OF RISK
-# ===============================
-pred_fail = float(m["Weekly_Pred_Scaled"])
-max_risk = df_final["Weekly_Pred_Scaled"].max()
+# ======================================
+# GAUGE – Nivel de Riesgo Normalizado
+# ======================================
 
-if max_risk == 0:
-    max_risk = 1
+st.markdown("## 🎯 Nivel de Riesgo (Gauge)")
 
-gauge_value = (pred_fail / max_risk) * 100
-
-# =====================================================
-# 📅 PLAN DE MANTENIMIENTO RECOMENDADO
-# =====================================================
-
-st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
-
-events_machine = df_events[df_events["Machine Name"] == machine_selected]
-
-if not events_machine.empty:
-    eq_type_machine = (
-        events_machine.groupby("EQ Type")["Downtime"]
-        .count()
-        .reset_index()
-        .sort_values(by="Downtime", ascending=False)
-        .iloc[0]["EQ Type"]
-    )
-else:
-    eq_type_machine = "No registrado"
-
-maint_days = m["Maintenance_Recommended"]
-
+# Valor real original
 pred_fail_real = float(m["Weekly_Prediction"])
 
-reco = f"""
-### 📌 Resumen de Mantenimiento para **{machine_selected}**
+# Evitar cero absoluto para log
+pred_for_calc = max(pred_fail_real, 1e-12)
 
-🔧 **Mantenimiento recomendado en:** {maint_days}
+# Normalización visual (NO afecta tus datos)
+risk_score = (np.log10(pred_for_calc + 1e-12) + 12) / 12
+risk_percent = round(risk_score * 100, 2)
 
-📉 **Predicción de fallas esta semana:** {pred_fail_real:.4f} fallas  
-*(valor real antes de escalamiento)*  
+fig_gauge = go.Figure(go.Indicator(
+    mode="gauge+number",
+    value=risk_percent,
+    title={'text': "Nivel de Riesgo (%)"},
+    gauge={
+        "axis": {"range": [0, 100]},
+        "bar": {"color": "black"},
+        "steps": [
+            {"range": [0, 40], "color": "lightgreen"},
+            {"range": [40, 70], "color": "yellow"},
+            {"range": [70, 100], "color": "red"},
+        ]
+    }
+))
 
-⚙️ **Tipo de equipo más crítico:** {eq_type_machine}
+st.plotly_chart(fig_gauge, use_container_width=True)
 
-🛠️ **Responsable sugerido:** Área especializada en **{eq_type_machine}**
-"""
+# ======================================
+# PLAN DE MANTENIMIENTO VISUAL (CARDS)
+# ======================================
+st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
+
+maint_days = m["Maintenance_Recommended"]
+eq_type_machine = eq_type_machine
+
+colA, colB = st.columns(2)
+
+with colA:
+    st.markdown(f"""
+    <div style="
+        background:#1E90FF;
+        padding:18px;
+        border-radius:10px;
+        color:white;">
+        <h3>🔧 Mantenimiento recomendado</h3>
+        <p style="font-size:22px;"><b>{maint_days}</b></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with colB:
+    st.markdown(f"""
+    <div style="
+        background:#6C63FF;
+        padding:18px;
+        border-radius:10px;
+        color:white;">
+        <h3>⚙️ Tipo de equipo más crítico</h3>
+        <p style="font-size:22px;"><b>{eq_type_machine}</b></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Segunda fila
+colC, colD = st.columns(2)
+
+with colC:
+    st.markdown(f"""
+    <div style="
+        background:#FF8C00;
+        padding:18px;
+        border-radius:10px;
+        color:white;">
+        <h3>📉 Predicción de fallas esta semana</h3>
+        <p style="font-size:22px;"><b>{pred_fail_real:.10f} (valor real)</b></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+with colD:
+    st.markdown(f"""
+    <div style="
+        background:#2ECC71;
+        padding:18px;
+        border-radius:10px;
+        color:white;">
+        <h3>🧑‍🔧 Responsable sugerido</h3>
+        <p style="font-size:22px;"><b>Área especializada en {eq_type_machine}</b></p>
+    </div>
+    """, unsafe_allow_html=True)
 
 # Estado
-if pred_fail_real >= 2:
-    reco += "\n🚨 **ALERTA:** Alta probabilidad de falla."
-elif pred_fail_real >= 1:
-    reco += "\n⚠️ **Atención:** Probabilidad media."
+if risk_percent > 70:
+    st.markdown("🚨 <b>Alerta crítica</b>: probabilidad alta de falla.", unsafe_allow_html=True)
+elif risk_percent > 40:
+    st.markdown("⚠️ <b>Atención</b>: riesgo medio.", unsafe_allow_html=True)
 else:
-    reco += "\n✅ **Estable:** Baja probabilidad de falla esta semana."
-
-st.markdown(reco)
+    st.markdown("🟩 <b>Estable</b>: baja probabilidad de falla.", unsafe_allow_html=True)
