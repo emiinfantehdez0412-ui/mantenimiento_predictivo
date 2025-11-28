@@ -43,30 +43,29 @@ df_original["Date"] = pd.to_datetime(df_original["Date"])
 df_original["Week"] = df_original["Date"].dt.to_period("W").dt.start_time
 
 # ===========================
-# 4. FILTROS
+# 4. FILTROS (CORREGIDOS)
 # ===========================
 st.sidebar.header("🎛️ Filtros")
 
+# Clusters provienen SOLO del archivo final
 clusters = sorted(final["Cluster"].unique())
 cluster_sel = st.sidebar.selectbox("Selecciona un clúster:", clusters)
 
-machines_cluster = sorted(
-    df_original[df_original["Cluster"] == cluster_sel]["Machine Name"].unique()
-)
+# Máquinas que pertenecen al cluster (según final_table)
+machines_cluster = final[final["Cluster"] == cluster_sel]["Machine"].unique()
 machine_sel = st.sidebar.selectbox("Selecciona una máquina:", machines_cluster)
 
+# Filtramos la base original por la máquina seleccionada
+df_filt_machine = df_original[df_original["Machine Name"] == machine_sel].copy()
+
+# Shift y EQ Type
 shifts = ["Todos"] + sorted(df_original["Shift"].unique())
 shift_sel = st.sidebar.selectbox("Selecciona turno (Shift):", shifts)
 
 eq_types = ["Todos"] + sorted(df_original["EQ Type"].unique())
 eq_sel = st.sidebar.selectbox("Selecciona EQ Type:", eq_types)
 
-# Filtrar base original
-df_filt = df_original.copy()
-
-df_filt = df_filt[df_filt["Cluster"] == cluster_sel]
-df_filt_machine = df_filt[df_filt["Machine Name"] == machine_sel]
-
+# Aplicar filtros
 if shift_sel != "Todos":
     df_filt_machine = df_filt_machine[df_filt_machine["Shift"] == shift_sel]
 
