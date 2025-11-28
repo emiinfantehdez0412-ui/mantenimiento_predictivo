@@ -89,48 +89,140 @@ with tab1:
     st.markdown("---")
 
     # HISTORICAL TREND
-    st.markdown("### 📈 Tendencia Histórica")
+    # ======================================
+# HISTORICAL + FORECASTED FAILURES (MACHINE)
+# ======================================
 
-    machine_hist = df_events[df_events["Machine Name"] == machine_selected]
+st.markdown("### 📈 Tendencia Histórica y Predicción de Fallas (Máquina)")
 
-    if machine_hist.empty:
-        st.warning("No hay datos históricos.")
-    else:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=machine_hist["Date"],
-            y=machine_hist["Downtime"],
-            mode="lines+markers",
-            line=dict(color="#4DA3FF", width=3),
-            marker=dict(size=6)
-        ))
-        fig.update_layout(
-            title=f"Downtime – {machine_selected}",
-            xaxis_title="Fecha",
-            yaxis_title="Downtime",
-            template="plotly_white"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+machine_hist = df_events[df_events["Machine Name"] == machine_selected].copy()
 
-    st.markdown("---")
-    st.markdown("### 🔮 Predicción y Mantenimiento")
+# Convertir fecha
+machine_hist["Date"] = pd.to_datetime(machine_hist["Date"])
 
-    col1, col2 = st.columns(2)
-    with col1:
-        metric_card("Predicción Semanal", round(m["Weekly_Prediction"], 3), "#1E8449")
-    with col2:
-        metric_card("Mantenimiento Recomendado", m["Maintenance_Recommended"], "#27AE60")
+# Agrupar por mes (YYYY-MM)
+machine_hist["YearMonth"] = machine_hist["Date"].dt.to_period("M").astype(str)
 
-    st.markdown("---")
-    st.markdown("### 📊 Métricas del Modelo")
+# Contar fallas
+failures_by_month = (
+    machine_hist.groupby("YearMonth")
+    .size()
+    .reset_index(name="Failures")
+)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        metric_card("Modelo", m["Best_Model"], "#6C3483")
-    with col2:
-        metric_card("Best MAE", round(m["Best_MAE"], 5), "#76448A")
-    with col3:
-        metric_card("Predicción Final", round(m["Best_Prediction"], 5), "#BB8FCE")
+# Forecast individual de la máquina
+forecast_value = m["Weekly_Prediction"]
+
+# Fecha futura (1 semana después del último evento)
+future_date = (machine_hist["Date"].max() + pd.DateOffset(weeks=1)).strftime("%Y-%m")
+
+forecast_df_machine = pd.DataFrame({
+    "YearMonth": [future_date],
+    "Failures": [forecast_value]
+})
+
+# =================== GRÁFICA ===================
+fig_m = go.Figure()
+
+# Históricas
+fig_m.add_trace(go.Scatter(
+    x=failures_by_month["YearMonth"],
+    y=failures_by_month["Failures"],
+    mode="lines+markers",
+    name="Fallas históricas",
+    line=dict(color="#4DA3FF", width=3),
+    marker=dict(size=7)
+))
+
+# Forecast
+fig_m.add_trace(go.Scatter(
+    x=[future_date],
+    y=[forecast_value],
+    mode="markers+text",
+    name="Predicción semanal",
+    marker=dict(color="#FF8C00", size=12),
+    text=["Forecast"],
+    textposition="top center"
+))
+
+fig_m.update_layout(
+    title=f"Fallas Históricas + Predicción – {machine_selected}",
+    xaxis_title="Mes",
+    yaxis_title="Número de fallas",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_m, use_container_width=True)
+
+# ======================================
+# HISTORICAL + FORECASTED FAILURES (CLUSTER)
+# ======================================
+
+st.markdown("### 📈 Tendencia Histórica y Predicción de Fallas (Clúster)")
+
+# Todas las máquinas del cluster
+cluster_machines = cluster_df["Machine"].unique()
+
+cluster_events = df_events[df_events["Machine Name"].isin(cluster_machines)].copy()
+
+# Convertir fecha
+cluster_events["Date"] = pd.to_datetime(cluster_events["Date"])
+
+# Agrupar por mes
+cluster_events["YearMonth"] = cluster_events["Date"].dt.to_period("M").astype(str)
+
+# Contar fallas totales por mes
+cluster_failures_by_month = (
+    cluster_events.groupby("YearMonth")
+    .size()
+    .reset_index(name="Failures")
+)
+
+# Forecast cluster = suma de forecasts de sus máquinas
+cluster_forecast_value = cluster_df["Weekly_Prediction"].sum()
+
+# Fecha futura
+future_date_cluster = (
+    cluster_events["Date"].max() + pd.DateOffset(weeks=1)
+).strftime("%Y-%m")
+
+forecast_df_cluster = pd.DataFrame({
+    "YearMonth": [future_date_cluster],
+    "Failures": [cluster_forecast_value]
+})
+
+# =================== GRÁFICA ===================
+fig_c = go.Figure()
+
+# Históricas cluster
+fig_c.add_trace(go.Scatter(
+    x=cluster_failures_by_month["YearMonth"],
+    y=cluster_failures_by_month["Failures"],
+    mode="lines+markers",
+    name="Fallas históricas (Cluster)",
+    line=dict(color="#008080", width=3),
+    marker=dict(size=7)
+))
+
+# Forecast cluster
+fig_c.add_trace(go.Scatter(
+    x=[future_date_cluster],
+    y=[cluster_forecast_value],
+    mode="markers+text",
+    name="Predicción semanal total",
+    marker=dict(color="#FF4500", size=12),
+    text=["Forecast"],
+    textposition="top center"
+))
+
+fig_c.update_layout(
+    title=f"Fallas Históricas + Predicción – {cluster_selected}",
+    xaxis_title="Mes",
+    yaxis_title="Número total de fallas",
+    template="plotly_white"
+)
+
+st.plotly_chart(fig_c, use_container_width=True)
 
 
 # ===============================
