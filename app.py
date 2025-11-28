@@ -170,7 +170,61 @@ with tab1:
 
         fig_m.update_layout(title=f"Fallas históricas + predicción ({machine_selected})")
         st.plotly_chart(fig_m, use_container_width=True)
+# ===============================
+# 📈 HISTÓRICO + FORECAST (CLÚSTER COMPLETO)
+# ===============================
+st.markdown("### 📈 Tendencia Histórica y Predicción de Fallas (Clúster)")
 
+cluster_df = df_final[df_final["Cluster_Name"] == cluster_selected]
+cluster_machines = cluster_df["Machine"].unique()
+
+# Filtrar eventos del clúster
+cluster_events = df_events[df_events["Machine Name"].isin(cluster_machines)].copy()
+
+if cluster_events.empty:
+    st.warning("⚠️ No hay historial de fallas para este clúster.")
+else:
+    cluster_events["Date"] = pd.to_datetime(cluster_events["Date"])
+    cluster_events["YearMonth"] = cluster_events["Date"].dt.to_period("M").astype(str)
+
+    failures_cluster = (
+        cluster_events.groupby("YearMonth").size().reset_index(name="Failures")
+    )
+
+    # Forecast = suma de predicciones del clúster
+    cluster_forecast = cluster_df["Weekly_Prediction"].sum()
+    future_cluster_date = (
+        cluster_events["Date"].max() + pd.DateOffset(weeks=1)
+    ).strftime("%Y-%m")
+
+    fig_c = go.Figure()
+
+    fig_c.add_trace(go.Scatter(
+        x=failures_cluster["YearMonth"],
+        y=failures_cluster["Failures"],
+        mode="lines+markers",
+        name="Fallas históricas",
+        line=dict(color="#008080")
+    ))
+
+    fig_c.add_trace(go.Scatter(
+        x=[future_cluster_date],
+        y=[cluster_forecast],
+        mode="markers+text",
+        text=["Forecast"],
+        textposition="top center",
+        marker=dict(color="red", size=12),
+        name="Predicción"
+    ))
+
+    fig_c.update_layout(
+        title=f"Fallas históricas + predicción — {cluster_selected}",
+        xaxis_title="Mes",
+        yaxis_title="Número total de fallas",
+        template="plotly_white"
+    )
+
+    st.plotly_chart(fig_c, use_container_width=True)
 # ===============================
 # TAB 2 — CLUSTER VIEW
 # ===============================
