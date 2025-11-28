@@ -217,23 +217,58 @@ with tab1:
     else:
         eq_type_machine = "No registrado"
 
-    reco = f"""
-    ### 📌 Resumen de Mantenimiento para **{machine_selected}**
+# =====================================================
+# 📅 PLAN DE MANTENIMIENTO RECOMENDADO — CARD STYLE
+# =====================================================
 
-    - 🔧 **Mantenimiento recomendado en:** **{maint_days}**
-    - 📉 **Predicción de fallas esta semana:** **{pred_fail:.2f} fallas**
-    - ⚙️ **Tipo de equipo más crítico:** **{eq_type_machine}**
-    - 🛠️ **Responsable:** Área de mantenimiento especializada en **{eq_type_machine}**
-    """
+st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
+st.markdown(f"### 📌 Resumen de Mantenimiento para **{machine_selected}**")
+st.markdown("")
 
-    if pred_fail >= 2:
-        reco += "\n- 🚨 **ALERTA:** Alta probabilidad de falla. Priorizar mantenimiento urgente."
-    elif pred_fail >= 1:
-        reco += "\n- ⚠️ **Atención:** Probabilidad media de falla."
-    else:
-        reco += "\n- ✅ **Estable:** Baja probabilidad de falla esta semana."
+# ---------- Tarjetas visuales ----------
+def maintenance_card(title, value, icon="🔧", color="#1F618D"):
+    st.markdown(
+        f"""
+        <div style="
+            background-color:{color};
+            padding:18px;
+            border-radius:12px;
+            color:white;
+            text-align:center;
+            font-size:18px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        ">
+            <div style="font-size:32px;">{icon}</div>
+            <b>{title}</b><br>
+            <span style="font-size:26px;">{value}</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    st.markdown(reco)
+colA, colB, colC, colD = st.columns(4)
+
+with colA:
+    maintenance_card("Mant. recomendado", f"{maint_days} días", "🔧", "#2471A3")
+
+with colB:
+    maintenance_card("Predicción semanal", f"{pred_fail:.2f} fallas", "📉", "#2E86C1")
+
+with colC:
+    maintenance_card("EQ crítico", eq_type_machine, "⚙️", "#117864")
+
+with colD:
+    maintenance_card("Responsable", f"{eq_type_machine}", "🛠️", "#5D6D7E")
+
+# ---------- Semáforo de riesgo ----------
+st.markdown("---")
+
+if pred_fail >= 2:
+    st.markdown("🚨 **ALERTA:** Alta probabilidad de falla. Priorizar mantenimiento urgente.")
+elif pred_fail >= 1:
+    st.markdown("⚠️ **Atención:** Probabilidad media de falla esta semana.")
+else:
+    st.markdown("🟢 **Estable:** Baja probabilidad de falla esta semana.")
 
 
 # ==========================================================================================
