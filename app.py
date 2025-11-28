@@ -101,6 +101,63 @@ with st.sidebar:
     filtered_machines = df_final[df_final["Cluster_Name"] == cluster_selected]["Machine"].unique()
     machine_selected = st.selectbox("Selecciona una máquina:", filtered_machines)
 
+# =============================================================
+# 📊 (A) TABLA COMPARATIVA DE RIESGO DENTRO DEL CLÚSTER
+# =============================================================
+
+st.markdown("### 📊 Comparativo dentro del Clúster")
+
+cluster_comp = df_final[df_final["Cluster_Name"] == cluster_selected][[
+    "Machine", "Weekly_Prediction", "Failure_Rate", "Num_Failures", "Avg_Severity"
+]].copy()
+
+cluster_comp = cluster_comp.rename(columns={
+    "Machine": "Máquina",
+    "Weekly_Prediction": "Predicción Semanal",
+    "Failure_Rate": "Tasa de Falla",
+    "Num_Failures": "Fallas Totales",
+    "Avg_Severity": "Severidad Prom"
+})
+
+# Ordenar por predicción
+cluster_comp = cluster_comp.sort_values(by="Predicción Semanal", ascending=False)
+
+# Resaltar la máquina seleccionada
+def highlight_row(row):
+    if row["Máquina"] == machine_selected:
+        return ["background-color: #1F618D; color:white; font-weight:bold;"] * len(row)
+    return [""] * len(row)
+
+st.dataframe(cluster_comp.style.apply(highlight_row, axis=1))
+
+# =============================================================
+# ⚠️ (B) GAUGE DE RIESGO BASADO EN PREDICCIÓN
+# =============================================================
+
+st.markdown("### 🎯 Nivel de Riesgo (Gauge)")
+
+# Normalizamos el riesgo según la máquina más crítica del clúster
+max_risk = cluster_comp["Predicción Semanal"].max()
+gauge_value = pred_fail / max_risk if max_risk > 0 else 0
+gauge_value = max(0, min(gauge_value, 1))  # evitar errores
+
+fig_gauge = go.Figure(go.Indicator(
+    mode="gauge+number",
+    value=gauge_value * 100,
+    number={'suffix': "%"},
+    title={'text': "Riesgo relativo dentro del clúster"},
+    gauge={
+        'axis': {'range': [0, 100]},
+        'bar': {'color': "#4DA3FF"},
+        'steps': [
+            {'range': [0, 33], 'color': '#2ECC71'},
+            {'range': [33, 66], 'color': '#F1C40F'},
+            {'range': [66, 100], 'color': '#E74C3C'}
+        ]
+    }
+))
+
+st.plotly_chart(fig_gauge, use_container_width=True)
 
 # ===============================
 # CARD FUNCTION
