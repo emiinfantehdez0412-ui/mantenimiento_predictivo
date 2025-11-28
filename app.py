@@ -75,13 +75,6 @@ if "Date" in df_original.columns:
 # Crear columna Failures = 1 por cada evento
 df_original["Failures"] = 1
 
-# Importante: agrupar por fecha antes de graficar
-df_machine = (
-    df_filt[df_filt["Machine Name"] == machine_sel]
-    .groupby("Date")["Failures"]
-    .sum()
-    .reset_index()
-)
 
 df_cluster_grouped = (
     df_filt[df_filt["Cluster"] == cluster_sel]
@@ -114,6 +107,13 @@ if shift_sel != "Todos":
 
 if eq_sel != "Todos":
     df_filt = df_filt[df_filt["EQ Type"] == eq_sel]
+
+df_machine = (
+    df_filt[df_filt["Machine Name"] == machine_sel]
+    .groupby("Date")["Failures"]
+    .sum()
+    .reset_index()
+)
 
 # ============================================================
 # 7. MANTENIMIENTO RECOMENDADO
