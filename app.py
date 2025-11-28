@@ -72,7 +72,7 @@ st.header("🛠️ Mantenimiento recomendado")
 st.success(f"✔ Se recomienda mantenimiento en **{maintenance_days}**.")
 
 # -------------------------------------------------------------
-# 6. HISTÓRICO SEMANAL + PREDICCIÓN
+# 6. HISTÓRICO SEMANAL + PREDICCIÓN TSB & CROSTON
 # -------------------------------------------------------------
 st.header("📉 Tendencia semanal histórica y predicción (TSB & Croston)")
 
@@ -92,31 +92,66 @@ weekly = df_m.groupby("week")["Downtime"].sum().reset_index()
 if len(weekly) == 0:
     st.warning("⚠ No hay datos suficientes para graficar el historial.")
 else:
+    last_week = weekly["week"].max()
+    next_week = last_week + pd.Timedelta(days=7)
+
+    # Obtener predicciones
+    tsb_pred = machine_row["Weekly_Prediction"]
+    croston_pred = machine_row["Best_Prediction"]  # ESTA VIENE DE final_table
 
     fig = go.Figure()
 
+    # ---------------- HISTÓRICO ----------------
     fig.add_trace(go.Scatter(
         x=weekly["week"],
         y=weekly["Downtime"],
         mode='lines+markers',
         name='Histórico',
-        line=dict(color="cyan")
+        line=dict(color="cyan", width=3)
     ))
 
-    # Línea de predicción
+    # ---------------- TSB ----------------
     fig.add_trace(go.Scatter(
-        x=[weekly["week"].max() + pd.Timedelta(days=7)],
+        x=[next_week],
         y=[tsb_pred],
         mode='markers',
         name='Predicción TSB',
-        marker=dict(color="yellow", size=12)
+        marker=dict(color="yellow", size=14)
     ))
 
+    fig.add_trace(go.Scatter(
+        x=[last_week, next_week],
+        y=[weekly["Downtime"].iloc[-1], tsb_pred],
+        mode="lines",
+        name="Línea TSB",
+        line=dict(color="yellow", dash="dot")
+    ))
+
+    # ---------------- CROSTON ----------------
+    fig.add_trace(go.Scatter(
+        x=[next_week],
+        y=[croston_pred],
+        mode='markers',
+        name='Predicción Croston',
+        marker=dict(color="magenta", size=14)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[last_week, next_week],
+        y=[weekly["Downtime"].iloc[-1], croston_pred],
+        mode="lines",
+        name="Línea Croston",
+        line=dict(color="magenta", dash="dot")
+    ))
+
+    # ---------------- LAYOUT ----------------
     fig.update_layout(
-        title=f"Predicción TSB – {machine_opt}",
+        title=f"Histórico y predicción (TSB & Croston) – {machine_opt}",
         xaxis_title="Semana",
         yaxis_title="Fallas estimadas",
-        template="plotly_dark"
+        template="plotly_dark",
+        legend=dict(font=dict(size=14)),
+        height=550
     )
 
     st.plotly_chart(fig, use_container_width=True)
