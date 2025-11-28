@@ -45,11 +45,15 @@ if "Date" in df_original.columns:
 # Normalizar columna Cluster
 # ============================================================
 
-# Buscar columnas posibles
 cluster_cols = [c for c in df_original.columns if c.lower().strip() in ["cluster", "clúster", "clusters"]]
 
 if len(cluster_cols) == 0:
-    st.error("❌ ERROR: Tu base original NO tiene una columna llamada 'Cluster'.")
+    st.error(
+        "❌ ERROR: Tu base original NO tiene una columna llamada 'Cluster'.\n\n"
+        "Revisa tu Excel y asegúrate de que tenga una columna con alguno de estos nombres:\n"
+        "- Cluster\n- cluster\n- Clúster\n\n"
+        "La tabla final SÍ la tiene, pero la original NO."
+    )
     st.stop()
 
 df_original.rename(columns={cluster_cols[0]: "Cluster"}, inplace=True)
