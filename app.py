@@ -292,16 +292,15 @@ with tab4:
 
 st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
 
-# Datos base
-maint_days = m["Maintenance_Recommended"]          # Ej: '2.9 días'
-pred_fail = m["Weekly_Prediction"]                 # Predicción semanal
-num_fail = m["Num_Failures"]
+# Nuevo método de predicción
+pred_fail = forecast_failures_machine(df_events, machine_selected)
+
+maint_days = m["Maintenance_Recommended"]
 machine_name = machine_selected
 
-# Filtrar eventos solo de la máquina
+# Filtrar EQ Type
 events_machine = df_events[df_events["Machine Name"] == machine_selected]
 
-# Tipo de equipo que más falla en esta máquina
 if not events_machine.empty:
     eq_type_machine = (
         events_machine.groupby("EQ Type")["Downtime"]
@@ -313,7 +312,7 @@ if not events_machine.empty:
 else:
     eq_type_machine = "No registrado"
 
-# Generar recomendación automática
+# Texto
 reco = f"""
 ### 📌 Resumen de Mantenimiento para **{machine_name}**
 
@@ -323,11 +322,13 @@ reco = f"""
 - 🛠️ **Responsable:** Área de mantenimiento especializada en **{eq_type_machine}**
 """
 
-if pred_fail >= 3:
-    reco += "\n- 🚨 **ALERTA:** La máquina presenta una tendencia elevada de fallas. Se recomienda inspección adicional."
+if pred_fail >= 2:
+    reco += "\n- 🚨 **ALERTA:** Alta probabilidad de falla. Priorizar mantenimiento urgente."
 elif pred_fail >= 1:
-    reco += "\n- ⚠️ **Atención:** Fallas moderadas. Asegurar cumplimiento del mantenimiento recomendado."
+    reco += "\n- ⚠️ **Atención:** Probabilidad media de falla."
 else:
     reco += "\n- ✅ **Estable:** Baja probabilidad de falla esta semana."
+
+st.markdown(reco)
 
 st.markdown(reco)
