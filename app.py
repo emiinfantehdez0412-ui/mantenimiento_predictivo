@@ -32,6 +32,11 @@ if file_original is None or file_final is None:
 
 df_original = pd.read_excel(file_original)
 df_final = pd.read_excel(file_final)
+df_original = pd.read_excel(file_original)
+
+# 🔥 FIX: Convertir a fecha correctamente
+if "Date" in df_original.columns:
+    df_original["Date"] = pd.to_datetime(df_original["Date"], errors="coerce")
 
 st.sidebar.success("Base original cargada correctamente. ✓")
 st.sidebar.success("Tabla procesada cargada correctamente. ✓")
