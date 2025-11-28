@@ -27,15 +27,48 @@ def load_data():
 df_final, df_events = load_data()
 
 # ===============================
-# SIDEBAR
+# SIDEBAR FILTERS – CASCADA + BADGE DE RIESGO
 # ===============================
+
 with st.sidebar:
     st.header("🔍 Filtros")
-    machines = df_final["Machine"].unique()
-    clusters = df_final["Cluster_Name"].unique()
 
-    machine_selected = st.selectbox("Selecciona una máquina:", machines)
+    # 1️⃣ Selección de clúster
+    clusters = df_final["Cluster_Name"].unique()
     cluster_selected = st.selectbox("Selecciona un clúster:", clusters)
+
+    # 2️⃣ Badge de riesgo según el clúster
+    if "HIGH" in cluster_selected.upper():
+        risk_color = "#E74C3C"   # rojo
+        risk_text  = "🔴 HIGH RISK"
+    else:
+        risk_color = "#2ECC71"   # verde
+        risk_text  = "🟢 LOW RISK"
+
+    st.markdown(
+        f"""
+        <div style="
+            background-color:{risk_color};
+            padding:10px;
+            border-radius:8px;
+            margin-bottom:15px;
+            text-align:center;
+            color:white;
+            font-size:18px;
+            font-weight:bold;">
+            {risk_text}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # 3️⃣ Máquinas filtradas por el clúster
+    filtered_machines = (
+        df_final[df_final["Cluster_Name"] == cluster_selected]["Machine"]
+        .unique()
+    )
+
+    machine_selected = st.selectbox("Selecciona una máquina:", filtered_machines)
 
 # ===============================
 # CARDS FUNCTION
