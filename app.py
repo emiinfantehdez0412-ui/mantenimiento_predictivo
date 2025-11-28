@@ -41,6 +41,18 @@ if "Fecha" in df_original.columns:
 
 if "Date" in df_original.columns:
     df_original["Date"] = pd.to_datetime(df_original["Date"], errors="coerce")
+# ============================================================
+# Normalizar columna Cluster
+# ============================================================
+
+# Buscar columnas posibles
+cluster_cols = [c for c in df_original.columns if c.lower().strip() in ["cluster", "clúster", "clusters"]]
+
+if len(cluster_cols) == 0:
+    st.error("❌ ERROR: Tu base original NO tiene una columna llamada 'Cluster'.")
+    st.stop()
+
+df_original.rename(columns={cluster_cols[0]: "Cluster"}, inplace=True)
 
 # ============================================================
 # 3. FILTROS (Cluster, Máquina, Shift, EQ Type)
