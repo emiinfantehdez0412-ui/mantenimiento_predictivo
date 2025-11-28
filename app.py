@@ -36,6 +36,18 @@ df_final["Weekly_Prediction"] = pd.to_numeric(
 # Convertimos mantenimiento recomendado a string para evitar errores
 df_final["Maintenance_Recommended"] = df_final["Maintenance_Recommended"].astype(str)
 
+# ===========================================
+# NORMALIZACIÓN DE PREDICCIONES PARA EL GAUGE
+# ===========================================
+
+# 1) Convertir a número real
+df_final["Weekly_Prediction"] = pd.to_numeric(
+    df_final["Weekly_Prediction"], errors="coerce"
+).fillna(0)
+
+# 2) Escalar predicciones para visualización
+# (porque tus valores reales son como 1.2e-40 = invisibles)
+df_final["Weekly_Pred_Scaled"] = df_final["Weekly_Prediction"] * 1_000_000_000_000
 
 # ===============================
 # SIDEBAR FILTERS – CASCADA + BADGE DE RIESGO
@@ -249,34 +261,18 @@ with tab4:
 # ===============================
 # GAUGE — LEVEL OF RISK
 # ===============================
-st.markdown("### 🎯 Nivel de Riesgo (Gauge)")
+pred_fail = float(m["Weekly_Pred_Scaled"])
+max_risk = df_final["Weekly_Pred_Scaled"].max()
 
-pred_fail = float(m["Weekly_Prediction"])
-max_risk = df_final["Weekly_Prediction"].max()
 if max_risk == 0:
     max_risk = 1
-gauge_value = pred_fail / max_risk * 100
 
-fig_gauge = go.Figure(go.Indicator(
-    mode="gauge+number",
-    value=gauge_value,
-    title={"text": "Nivel de Riesgo (%)"},
-    gauge={
-        "axis": {"range": [0, 100]},
-        "bar": {"color": "orange"},
-        "steps": [
-            {"range": [0, 30], "color": "lightgreen"},
-            {"range": [30, 60], "color": "yellow"},
-            {"range": [60, 100], "color": "red"},
-        ],
-    }
-))
+gauge_value = (pred_fail / max_risk) * 100
 
-st.plotly_chart(fig_gauge, use_container_width=True)
+# =====================================================
+# 📅 PLAN DE MANTENIMIENTO RECOMENDADO
+# =====================================================
 
-# ===============================
-# MAINTENANCE SUMMARY
-# ===============================
 st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
 
 events_machine = df_events[df_events["Machine Name"] == machine_selected]
@@ -284,7 +280,8 @@ events_machine = df_events[df_events["Machine Name"] == machine_selected]
 if not events_machine.empty:
     eq_type_machine = (
         events_machine.groupby("EQ Type")["Downtime"]
-        .count().reset_index()
+        .count()
+        .reset_index()
         .sort_values(by="Downtime", ascending=False)
         .iloc[0]["EQ Type"]
     )
@@ -293,20 +290,27 @@ else:
 
 maint_days = m["Maintenance_Recommended"]
 
+pred_fail_real = float(m["Weekly_Prediction"])
+
 reco = f"""
 ### 📌 Resumen de Mantenimiento para **{machine_selected}**
 
-- 🔧 **Mantenimiento recomendado en:** **{maint_days}**
-- 📉 **Predicción de fallas esta semana:** **{pred_fail:.2f} fallas**
-- ⚙️ **Tipo de equipo más crítico:** **{eq_type_machine}**
-- 🛠️ **Responsable:** Área de mantenimiento especializada en **{eq_type_machine}**
+🔧 **Mantenimiento recomendado en:** {maint_days}
+
+📉 **Predicción de fallas esta semana:** {pred_fail_real:.4f} fallas  
+*(valor real antes de escalamiento)*  
+
+⚙️ **Tipo de equipo más crítico:** {eq_type_machine}
+
+🛠️ **Responsable sugerido:** Área especializada en **{eq_type_machine}**
 """
 
-if pred_fail >= 2:
-    reco += "\n- 🚨 **ALERTA:** Alta probabilidad de falla."
-elif pred_fail >= 1:
-    reco += "\n- ⚠️ **Atención:** Probabilidad media."
+# Estado
+if pred_fail_real >= 2:
+    reco += "\n🚨 **ALERTA:** Alta probabilidad de falla."
+elif pred_fail_real >= 1:
+    reco += "\n⚠️ **Atención:** Probabilidad media."
 else:
-    reco += "\n- ✅ **Estable:** Baja probabilidad de falla esta semana."
+    reco += "\n✅ **Estable:** Baja probabilidad de falla esta semana."
 
 st.markdown(reco)
