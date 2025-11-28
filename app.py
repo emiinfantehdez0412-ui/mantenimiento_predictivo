@@ -15,17 +15,16 @@ st.title("🛠️ Dashboard de Mantenimiento Predictivo – FLEX")
 
 
 # =====================================================================
-# LOAD DATA
+# LOAD DATA (SOLO 2 ARCHIVOS)
 # =====================================================================
 
 @st.cache_data
 def load_data():
     df_final = pd.read_excel("final_table_FIXED.xlsx")
     df_events = pd.read_excel("Mantenimiento_FLEX.xlsx")
-    df_raw = pd.read_csv("historical_failures.csv")  # si no la tienes la quitamos
-    return df_final, df_events, df_raw
+    return df_final, df_events
 
-df_final, df_events, df_raw = load_data()
+df_final, df_events = load_data()
 
 
 # =====================================================================
@@ -108,7 +107,7 @@ st.subheader("📊 Métricas del Modelo (Mejor Modelo Seleccionado)")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("Modelo", m["Best_Model"])
+    st.metric("Modelo Seleccionado", m["Best_Model"])
 
 with col2:
     st.metric("Best MAE", round(m["Best_MAE"], 5))
@@ -160,7 +159,7 @@ st.warning(
 
 
 # =====================================================================
-# TABLE OF THE SELECTED CLUSTER
+# CLUSTER TABLE
 # =====================================================================
 
 st.subheader("📘 Tabla Completa del Clúster Seleccionado")
@@ -176,13 +175,3 @@ st.dataframe(cluster_df[
         "Best_MAE"
     ]
 ])
-
-
-# =====================================================================
-# RAW HISTORICAL TABLE (OPTIONAL)
-# =====================================================================
-
-st.subheader("📄 Datos Históricos (Raw)")
-
-with st.expander("Mostrar/Ocultar"):
-    st.dataframe(df_raw)
