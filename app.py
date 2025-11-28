@@ -33,6 +33,33 @@ if df_original is None or df_final is None:
     st.stop()
 
 # ============================================================
+# *** UNIFICAR CLUSTER EN LA BASE ORIGINAL ***
+# ============================================================
+
+# Normalizar nombres de máquina en ambas bases
+df_original["Machine Name"] = df_original["Machine Name"].astype(str).str.strip().str.lower()
+df_final["Machine"] = df_final["Machine"].astype(str).str.strip().str.lower()
+
+# Tomar solo columnas de cluster de df_final
+df_cluster_map = df_final[["Machine", "Cluster"]].drop_duplicates()
+
+# Hacer merge para unir cluster a la base original
+df_original = df_original.merge(
+    df_cluster_map,
+    left_on="Machine Name",
+    right_on="Machine",
+    how="left"
+)
+
+# Eliminar columna duplicada
+df_original.drop(columns=["Machine"], inplace=True)
+
+# Validar que ya existe Cluster
+if df_original["Cluster"].isna().all():
+    st.error("❌ ERROR: No se pudieron asignar los clusters a la base original. Revisa que los nombres de máquina coincidan entre ambos Excel.")
+    st.stop()
+    
+# ============================================================
 # 2. NORMALIZAR NOMBRE DE FECHA
 # ============================================================
 
