@@ -33,19 +33,26 @@ if uploaded_processed:
 
 if df_original is not None and df_processed is not None:
 
-    # --------------------------------------------------
-    # 3. ASEGURAR QUE EXISTE COLUMNA "Date"
-    # --------------------------------------------------
-    # Asegurar columna Date 100% limpia
+# -------------------------------
+# LIMPIEZA Y VALIDACIÓN DE FECHAS
+# -------------------------------
+
+# 1. Detectar columna correcta
 if "Fecha" in df_original.columns:
     df_original["Date"] = df_original["Fecha"]
-elif "Date" not in df_original.columns:
-    st.error("⚠ ERROR: La base original no tiene columna Fecha o Date.")
+elif "Date" in df_original.columns:
+    df_original["Date"] = df_original["Date"]
+else:
+    st.error("⚠ ERROR: La base original no tiene columna 'Fecha' o 'Date'.")
     st.stop()
 
-# Convertir a datetime y limpiar
+# 2. Convertir a datetime (coerce = invalid → NaT)
 df_original["Date"] = pd.to_datetime(df_original["Date"], errors="coerce")
+
+# 3. Eliminar filas SIN fecha válida
 df_original = df_original.dropna(subset=["Date"])
+
+# 4. Ordenar por fecha antes de agrupar
 df_original = df_original.sort_values("Date")
 
     # --------------------------------------------------
