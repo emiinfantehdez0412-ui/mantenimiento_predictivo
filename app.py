@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objs as go
 
 # ===============================
-# CONFIGURACIÓN
+# CONFIG
 # ===============================
 st.set_page_config(page_title="FLEX Predictivo", layout="wide")
 
@@ -26,13 +26,13 @@ def load_data():
 df_final, df_events = load_data()
 
 # ===============================
-# LIMPIAR / AJUSTAR DATOS
+# PREPARE DATA
 # ===============================
 df_final["Weekly_Prediction"] = pd.to_numeric(df_final["Weekly_Prediction"], errors="coerce").fillna(0)
 df_final["Maintenance_Recommended"] = df_final["Maintenance_Recommended"].astype(str)
 
 # ===============================
-# CÁLCULO DE PESOS
+# CALCULATE REAL WEIGHTS FOR RISK MODEL
 # ===============================
 failures = df_final["Num_Failures"]
 severity = df_final["Avg_Severity"]
@@ -49,27 +49,26 @@ w_sev  = cv_sev  / total_cv
 w_down = cv_down / total_cv
 
 # ===============================
-# NORMALIZACIÓN MANUAL
+# NORMALIZATION FUNCTION
 # ===============================
 def normalize(series):
     return (series - series.min()) / (series.max() - series.min() + 1e-12)
 
-df_final["Norm_Failures"] = normalize(df_final["Num_Failures"])
-df_final["Norm_Severity"] = normalize(df_final["Avg_Severity"])
-df_final["Norm_Downtime"] = normalize(df_final["Total_Downtime"])
+df_final["Norm_Failures"] = normalize(failures)
+df_final["Norm_Severity"] = normalize(severity)
+df_final["Norm_Downtime"] = normalize(downtime)
 
 # ===============================
-# RISK SCORE FINAL (0–100)
+# FINAL RISK SCORE
 # ===============================
 df_final["Risk_Score"] = (
-    w_fail * df_final["Norm_Failures"] +
-    w_sev  * df_final["Norm_Severity"] +
-    w_down * df_final["Norm_Downtime"]
+    w_fail * df_final["Norm_Failures"]
+    + w_sev  * df_final["Norm_Severity"]
+    + w_down * df_final["Norm_Downtime"]
 ) * 100
 
-
 # ===============================
-# SIDEBAR
+# SIDEBAR FILTERS
 # ===============================
 with st.sidebar:
     st.header("🔍 Filtros")
@@ -77,6 +76,7 @@ with st.sidebar:
     clusters = df_final["Cluster_Name"].unique()
     cluster_selected = st.selectbox("Selecciona un clúster:", clusters)
 
+    # BADGE
     if "HIGH" in cluster_selected.upper():
         risk_color = "#E74C3C"
         risk_text = "🔴 HIGH RISK"
@@ -101,17 +101,113 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
+    # Filter machines of cluster
     filtered_machines = df_final[df_final["Cluster_Name"] == cluster_selected]["Machine"].unique()
     machine_selected = st.selectbox("Selecciona una máquina:", filtered_machines)
 
-# ===============================
-# GET MACHINE ROW
-# ===============================
+# -------------------------------------
+# GET SELECTED MACHINE ROW
+# -------------------------------------
 m = df_final[df_final["Machine"] == machine_selected].iloc[0]
 
 # ===============================
-# GAUGE
+# TABS (COMPLETO)
 # ===============================
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📌 Máquina",
+    "🏭 Clúster",
+    "🤖 EQ Type",
+    "📊 Tabla"
+])
+
+# ===============================
+# TAB 1 - MACHINE VIEW
+# ===============================
+with tab1:
+    st.markdown("## 📌 Información de la Máquina")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Failure Rate", round(m["Failure_Rate"], 4))
+    col2.metric("Avg Severity", round(m["Avg_Severity"], 4))
+    col3.metric("Total Downtime", round(m["Total_Downtime"], 2))
+    col4.metric("Número de Fallas", int(m["Num_Failures"]))
+
+    st.markdown("---")
+
+    # Historical failures
+    machine_hist = df_events[df_events["Machine Name"] == machine_selected].copy()
+    if machine_hist.empty:
+        st.warning("⚠️ No hay historial de fallas para esta máquina.")
+    else:
+        machine_hist["Date"] = pd.to_datetime(machine_hist["Date"])
+        machine_hist["YearMonth"] = machine_hist["Date"].dt.to_period("M").astype(str)
+
+        failures_by_month = (
+            machine_hist.groupby("YearMonth").size().reset_index(name="Failures")
+        )
+
+        forecast_value = m["Weekly_Prediction"]
+        future_date = (machine_hist["Date"].max() + pd.DateOffset(weeks=1)).strftime("%Y-%m")
+
+        fig_m = go.Figure()
+
+        fig_m.add_trace(go.Scatter(
+            x=failures_by_month["YearMonth"],
+            y=failures_by_month["Failures"],
+            mode="lines+markers",
+            name="Fallas históricas",
+            line=dict(color="#4DA3FF")
+        ))
+
+        fig_m.add_trace(go.Scatter(
+            x=[future_date],
+            y=[forecast_value],
+            mode="markers+text",
+            text=["Forecast"],
+            textposition="top center",
+            marker=dict(color="orange", size=12)
+        ))
+
+        fig_m.update_layout(title=f"Fallas históricas + predicción ({machine_selected})")
+        st.plotly_chart(fig_m, use_container_width=True)
+
+# ===============================
+# TAB 2 — CLUSTER VIEW
+# ===============================
+with tab2:
+    st.markdown(f"## 🏭 Máquinas del clúster {cluster_selected}")
+
+    clust_df = df_final[df_final["Cluster_Name"] == cluster_selected]
+
+    fig2 = px.bar(
+        clust_df, x="Machine", y="Num_Failures",
+        color="Num_Failures", color_continuous_scale="Blues"
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+# ===============================
+# TAB 3 — EQ TYPE
+# ===============================
+with tab3:
+    st.markdown("## 🤖 EQ Types con más fallas")
+
+    eq_fail = df_events.groupby("EQ Type")["Downtime"].count().reset_index()
+    eq_fail = eq_fail.sort_values(by="Downtime", ascending=False)
+
+    fig3 = px.bar(eq_fail, x="EQ Type", y="Downtime",
+                  color="Downtime", color_continuous_scale="Tealgrn")
+    st.plotly_chart(fig3, use_container_width=True)
+
+# ===============================
+# TAB 4 — DATAFRAME
+# ===============================
+with tab4:
+    st.markdown("## 📊 Datos del clúster seleccionado")
+    st.dataframe(df_final[df_final["Cluster_Name"] == cluster_selected])
+
+# ======================================================
+#  GAUGE — RISK SCORE
+# ======================================================
 st.markdown("## 🎯 Nivel de Riesgo (Gauge)")
 
 risk_percent = float(m["Risk_Score"])
@@ -133,9 +229,9 @@ fig_gauge = go.Figure(go.Indicator(
 
 st.plotly_chart(fig_gauge, use_container_width=True)
 
-# ===============================
-# PLAN DE MANTENIMIENTO
-# ===============================
+# ======================================================
+# PLAN DE MANTENIMIENTO VISUAL
+# ======================================================
 st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
 
 pred_fail_real = float(m["Weekly_Prediction"])
@@ -180,6 +276,7 @@ with colD:
     </div>
     """, unsafe_allow_html=True)
 
+# Alert status
 if risk_percent > 70:
     st.markdown("🚨 <b>Alerta crítica:</b> probabilidad alta de falla.", unsafe_allow_html=True)
 elif risk_percent > 40:
