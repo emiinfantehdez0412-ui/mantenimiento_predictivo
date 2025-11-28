@@ -136,10 +136,13 @@ st.dataframe(cluster_comp.style.apply(highlight_row, axis=1))
 
 st.markdown("### 🎯 Nivel de Riesgo (Gauge)")
 
-# Normalizamos el riesgo según la máquina más crítica del clúster
+# Obtener predicción semanal REAL desde final_table_FIXED.xlsx
+pred_fail = float(m["Weekly_Prediction"])
+
+# Normalizamos el riesgo dentro del clúster
 max_risk = cluster_comp["Predicción Semanal"].max()
 gauge_value = pred_fail / max_risk if max_risk > 0 else 0
-gauge_value = max(0, min(gauge_value, 1))  # evitar errores
+gauge_value = max(0, min(gauge_value, 1))
 
 fig_gauge = go.Figure(go.Indicator(
     mode="gauge+number",
@@ -158,7 +161,6 @@ fig_gauge = go.Figure(go.Indicator(
 ))
 
 st.plotly_chart(fig_gauge, use_container_width=True)
-
 # ===============================
 # CARD FUNCTION
 # ===============================
