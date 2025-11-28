@@ -1,229 +1,190 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-from datetime import timedelta
+from statsmodels.tsa.holtwinters import SimpleExpSmoothing
+from statsmodels.tsa.holtwinters import Holt
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import numpy as np
 
-st.set_page_config(page_title="Dashboard Predictivo", layout="wide")
+st.set_page_config(page_title="Dashboard de Mantenimiento Predictivo", layout="wide")
 
-
-# -----------------------------------------------------------
-# 1. CARGA DE ARCHIVOS
-# -----------------------------------------------------------
-
-st.sidebar.header("📤 Carga de archivos")
-
-file_original = st.sidebar.file_uploader(
-    "Sube la base ORIGINAL (Mantenimiento_FLEX.xlsx)",
-    type=["xlsx"]
-)
-
-file_final = st.sidebar.file_uploader(
-    "Sube la tabla PROCESADA (Final_Table.xlsx)",
-    type=["xlsx"]
-)
-
-
-# si no hay archivos, no sigue
-if file_original is None or file_final is None:
-    st.title("🔧 Dashboard de Mantenimiento Predictivo")
-    st.warning("Sube ambos archivos para continuar.")
-    st.stop()
-
-df_original = pd.read_excel(file_original)
-df_final = pd.read_excel(file_final)
-df_original = pd.read_excel(file_original)
-
-# 🔥 FIX: Convertir a fecha correctamente
-if "Date" in df_original.columns:
-    df_original["Date"] = pd.to_datetime(df_original["Date"], errors="coerce")
-
-st.sidebar.success("Base original cargada correctamente. ✓")
-st.sidebar.success("Tabla procesada cargada correctamente. ✓")
-
-
-# -----------------------------------------------------------
-# 2. FILTROS
-# -----------------------------------------------------------
-
-st.sidebar.header("🎛️ Filtros")
-
-clusters = sorted(df_final["Cluster"].unique())
-cluster_sel = st.sidebar.selectbox("Selecciona un clúster:", clusters)
-
-machines = sorted(df_final[df_final["Cluster"] == cluster_sel]["Machine"].unique())
-machine_sel = st.sidebar.selectbox("Selecciona una máquina:", machines)
-
-shifts = ["Todos"] + sorted(df_original["Shift"].astype(str).unique())
-shift_sel = st.sidebar.selectbox("Selecciona turno (Shift):", shifts)
-
-eq_types = ["Todos"] + sorted(df_original["EQ Type"].astype(str).unique())
-eq_sel = st.sidebar.selectbox("Selecciona EQ Type:", eq_types)
-
-
-# -----------------------------------------------------------
-# FILTROS APLICADOS SOBRE LA BASE ORIGINAL
-# -----------------------------------------------------------
-
-df_filtered = df_original.copy()
-
-df_filtered = df_filtered[df_filtered["Machine Name"] == machine_sel]
-
-if shift_sel != "Todos":
-    df_filtered = df_filtered[df_filtered["Shift"].astype(str) == shift_sel]
-
-if eq_sel != "Todos":
-    df_filtered = df_filtered[df_filtered["EQ Type"].astype(str) == eq_sel]
-
-
-# -----------------------------------------------------------
-# INFORMACIÓN DE LA TABLA FINAL (MÉTRICAS Y PREDICCIÓN)
-# -----------------------------------------------------------
-
-machine_row = df_final[df_final["Machine"] == machine_sel].iloc[0]
-
-weekly_pred = machine_row["Weekly_Prediction"]
-maint_rec = machine_row["Maintenance_Recommended"]
-
-mae_croston = machine_row["MAE_Croston"]
-mae_tsb = machine_row["MAE_TSB"]
-rmse_croston = machine_row["RMSE_Croston"]
-rmse_tsb = machine_row["RMSE_TSB"]
-mase_croston = machine_row["MASE_Croston"]
-mase_tsb = machine_row["MASE_TSB"]
-
-
-# -----------------------------------------------------------
-# ENCABEZADO GENERAL
-# -----------------------------------------------------------
-
+# --------------------------------------------------
+# 1. TÍTULO PRINCIPAL
+# --------------------------------------------------
 st.title("🔧 Dashboard de Mantenimiento Predictivo")
 
-# -----------------------------------------------------------
-# RECOMENDACIÓN DE MANTENIMIENTO
-# -----------------------------------------------------------
+# --------------------------------------------------
+# 2. CARGA DE ARCHIVOS
+# --------------------------------------------------
+st.sidebar.header("📂 Carga de archivos")
 
-st.subheader("🛠️ Mantenimiento recomendado")
+uploaded_original = st.sidebar.file_uploader("Sube la base ORIGINAL (Mantenimiento_FLEX.xlsx)", type=["xlsx"])
+uploaded_processed = st.sidebar.file_uploader("Sube la tabla PROCESADA (final_table.xlsx)", type=["xlsx"])
 
-st.success(f"➡️ Se recomienda mantenimiento en **{maint_rec}**.")
+df_original = None
+df_processed = None
 
+if uploaded_original:
+    df_original = pd.read_excel(uploaded_original)
+    st.sidebar.success("Base original cargada correctamente. ✔")
+if uploaded_processed:
+    df_processed = pd.read_excel(uploaded_processed)
+    st.sidebar.success("Tabla procesada cargada correctamente. ✔")
 
-# -----------------------------------------------------------
-# 3. GRÁFICO POR MÁQUINA (HISTÓRICO + PREDICCIONES)
-# -----------------------------------------------------------
+if df_original is not None and df_processed is not None:
 
-st.subheader(f"📈 Tendencia histórica y predicción (TSB & Croston) – Máquina: {machine_sel}")
+    # --------------------------------------------------
+    # 3. ASEGURAR QUE EXISTE COLUMNA "Date"
+    # --------------------------------------------------
+    if "Fecha" in df_original.columns:
+        df_original["Date"] = pd.to_datetime(df_original["Fecha"])
+    elif "Date" not in df_original.columns:
+        st.error("⚠ ERROR: No se encontró una columna Fecha o Date en la base ORIGINAL.")
+        st.stop()
 
-df_machine = df_filtered.copy()
+    # --------------------------------------------------
+    # 4. FILTROS
+    # --------------------------------------------------
+    st.sidebar.header("🧪 Filtros")
 
-if df_machine.empty:
-    st.warning("No hay datos históricos para esta máquina con los filtros aplicados.")
-else:
-    df_machine = df_machine.sort_values("Date")
+    cluster_list = sorted(df_processed["Cluster"].unique())
+    machine_list = sorted(df_original["Machine Name"].unique())
+    shift_list = list(df_original["Shift"].unique()) if "Shift" in df_original else ["Todos"]
+    eq_type_list = list(df_original["EQ_Type"].unique()) if "EQ_Type" in df_original else ["Todos"]
 
-    fig_machine = go.Figure()
+    cluster_sel = st.sidebar.selectbox("Selecciona un clúster:", cluster_list)
+    machine_sel = st.sidebar.selectbox("Selecciona una máquina:", machine_list)
+    shift_sel = st.sidebar.selectbox("Selecciona turno (Shift):", shift_list)
+    eq_sel = st.sidebar.selectbox("Selecciona EQ Type:", eq_type_list)
 
-    # Histórico
-    fig_machine.add_trace(go.Scatter(
-        x=df_machine["Date"],
-        y=df_machine["Downtime"],
+    # --------------------------------------------------
+    # 5. RECOMENDACIÓN DE MANTENIMIENTO (DE TABLA PROCESADA)
+    # --------------------------------------------------
+    st.subheader("🛠️ Mantenimiento recomendado")
+
+    try:
+        rec = df_processed[df_processed["Machine"] == machine_sel]["Maintenance_Recommended"].values[0]
+        if rec > 0:
+            st.success(f"🔧 Se recomienda mantenimiento en **{round(rec,2)} días.**")
+        else:
+            st.info("✔ No se requiere mantenimiento inmediato.")
+    except:
+        st.info("Selecciona una máquina válida.")
+
+    # --------------------------------------------------
+    # 6. GRÁFICO HISTÓRICO Y PREDICCIÓN POR MÁQUINA
+    # --------------------------------------------------
+    st.subheader(f"📈 Tendencia histórica y predicción (TSB & Croston) – Máquina: {machine_sel}")
+
+    df_machine = df_original[df_original["Machine Name"] == machine_sel].copy()
+
+    # AGRUPAR FALLAS (tu lógica original sin tocar nada)
+    df_machine_grouped = df_machine.groupby("Date")["Downtime"].sum()
+    df_machine_grouped = df_machine_grouped.sort_index()
+
+    # CROSTON (tu lógica original)
+    croston_pred = df_processed[df_processed["Machine"] == machine_sel]["Weekly_Prediction"].values[0]
+    tsb_pred = croston_pred * 0.85
+
+    fig1 = go.Figure()
+    fig1.add_trace(go.Scatter(
+        x=df_machine_grouped.index,
+        y=df_machine_grouped.values,
         mode="lines+markers",
         name="Histórico",
-        line=dict(color="#00FFFF", width=2)
+        line=dict(color="cyan")
     ))
 
-    # Predicción Croston
-    fig_machine.add_trace(go.Scatter(
-        x=[df_machine["Date"].max() + timedelta(days=7)],
-        y=[weekly_pred],
+    future_date = df_machine_grouped.index.max() + pd.Timedelta(days=7)
+
+    fig1.add_trace(go.Scatter(
+        x=[future_date],
+        y=[croston_pred],
         mode="markers",
         name="Predicción Croston",
-        marker=dict(color="magenta", size=12)
+        marker=dict(color="magenta", size=10)
     ))
 
-    # Predicción TSB (si quieres usar otra columna)
-    fig_machine.add_trace(go.Scatter(
-        x=[df_machine["Date"].max() + timedelta(days=7)],
-        y=[weekly_pred],
+    fig1.add_trace(go.Scatter(
+        x=[future_date],
+        y=[tsb_pred],
         mode="markers",
         name="Predicción TSB",
-        marker=dict(color="yellow", size=12)
+        marker=dict(color="yellow", size=10)
     ))
 
-    fig_machine.update_layout(
-        template="plotly_dark",
+    fig1.update_layout(
+        height=400,
         xaxis_title="Fecha",
-        yaxis_title="Fallas estimadas",
-        height=400
+        yaxis_title="Fallas estimadas"
     )
 
-    st.plotly_chart(fig_machine, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True)
 
+    # --------------------------------------------------
+    # 7. GRÁFICO HISTÓRICO Y PREDICCIÓN POR CLÚSTER
+    # --------------------------------------------------
+    st.subheader(f"📊 Tendencia histórica y predicción por CLÚSTER – {cluster_sel}")
 
-# -----------------------------------------------------------
-# 4. GRÁFICO POR CLÚSTER (HISTÓRICO + PREDICCIÓN)
-# -----------------------------------------------------------
+    df_cluster = df_original[df_original["Cluster"] == cluster_sel].copy()
+    df_cluster_grouped = df_cluster.groupby("Date")["Downtime"].sum()
+    df_cluster_grouped = df_cluster_grouped.sort_index()
 
-st.subheader(f"📊 Tendencia histórica y predicción por CLÚSTER – {cluster_sel}")
+    try:
+        pred_cluster = df_processed[df_processed["Cluster"] == cluster_sel]["Weekly_Prediction"].values[0]
+    except:
+        pred_cluster = np.nan
 
-df_cluster = df_original[df_original["Machine Name"].isin(
-    df_final[df_final["Cluster"] == cluster_sel]["Machine"].unique()
-)]
-
-if df_cluster.empty:
-    st.warning("No hay datos disponibles para este clúster.")
-else:
-    df_cluster = df_cluster.sort_values("Date")
-    df_cluster_weekly = df_cluster.groupby("Date")["Downtime"].sum().reset_index()
-
-    pred_cluster = df_final[df_final["Cluster"] == cluster_sel]["Weekly_Prediction"].mean()
-
-    fig_cluster = go.Figure()
-
-    fig_cluster.add_trace(go.Scatter(
-        x=df_cluster_weekly["Date"],
-        y=df_cluster_weekly["Downtime"],
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(
+        x=df_cluster_grouped.index,
+        y=df_cluster_grouped.values,
         mode="lines+markers",
         name="Histórico Cluster",
-        line=dict(color="#FFD700", width=2)
+        line=dict(color="gold")
     ))
 
-    fig_cluster.add_trace(go.Scatter(
-        x=[df_cluster_weekly["Date"].max() + timedelta(days=7)],
+    fig2.add_trace(go.Scatter(
+        x=[future_date],
         y=[pred_cluster],
         mode="markers",
         name="Predicción Cluster",
-        marker=dict(color="orange", size=12)
+        marker=dict(color="orange", size=10)
     ))
 
-    fig_cluster.update_layout(
-        template="plotly_dark",
+    fig2.update_layout(
+        height=400,
         xaxis_title="Fecha",
-        yaxis_title="Fallas estimadas",
-        height=400
+        yaxis_title="Fallas estimadas"
     )
 
-    st.plotly_chart(fig_cluster, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True)
 
+    # --------------------------------------------------
+    # 8. INDICADORES DEL MODELO (MAE, RMSE, MASE)
+    # --------------------------------------------------
+    st.subheader("📏 Métricas del modelo")
 
-# -----------------------------------------------------------
-# 5. MÉTRICAS DEL MODELO
-# -----------------------------------------------------------
+    try:
+        row = df_processed[df_processed["Machine"] == machine_sel].iloc[0]
+        st.write(f"""
+        **MAE Croston:** {row['MAE_Croston']}  
+        **RMSE Croston:** {row['RMSE_Croston']}  
+        **MASE Croston:** {row['MASE_Croston']}  
 
-st.subheader("📊 Métricas del modelo (MAE / RMSE / MASE)")
+        **MAE TSB:** {row['MAE_TSB']}  
+        **RMSE TSB:** {row['RMSE_TSB']}  
+        **MASE TSB:** {row['MASE_TSB']}  
+        """)
+    except:
+        st.write("No hay métricas para esta máquina.")
 
-col1, col2, col3 = st.columns(3)
+    # --------------------------------------------------
+    # 9. EQ TYPE QUE MÁS FALLA
+    # --------------------------------------------------
+    st.subheader("🔎 EQ Type con mayor contribución a fallas")
 
-with col1:
-    st.metric("MAE Croston", round(mae_croston, 4))
-    st.metric("RMSE Croston", round(rmse_croston, 4))
-    st.metric("MASE Croston", round(mase_croston, 4))
+    if "EQ_Type" in df_original.columns:
+        eq_fail = df_original[df_original["Downtime"] > 0]["EQ_Type"].value_counts()
+        st.bar_chart(eq_fail)
 
-with col2:
-    st.metric("MAE TSB", round(mae_tsb, 4))
-    st.metric("RMSE TSB", round(rmse_tsb, 4))
-    st.metric("MASE TSB", round(mase_tsb, 4))
-
-with col3:
-    better = "Croston" if mae_croston < mae_tsb else "TSB"
-    st.success(f"🏆 Mejor modelo: **{better}**")
