@@ -25,14 +25,35 @@ def load_data():
 
 df_final, df_events = load_data()
 
+# =========================================
+# FUNCIÓN DE PREDICCIÓN REAL (OPCIÓN A)
+# =========================================
+def compute_weekly_prediction(machine_name, df_events):
+
+    df_m = df_events[df_events["Machine Name"] == machine_name].copy()
+
+    if df_m.empty:
+        return 0.0
+
+    df_m["Date"] = pd.to_datetime(df_m["Date"])
+    df_m["YearMonth"] = df_m["Date"].dt.to_period("M")
+
+    monthly_failures = df_m.groupby("YearMonth").size()
+
+    avg_monthly = monthly_failures.mean()
+
+    avg_weekly = avg_monthly / 4.345
+
+    return float(avg_weekly)
+
+
 # ===============================
 # PREPARE DATA
 # ===============================
-df_final["Weekly_Prediction"] = pd.to_numeric(df_final["Weekly_Prediction"], errors="coerce").fillna(0)
 df_final["Maintenance_Recommended"] = df_final["Maintenance_Recommended"].astype(str)
 
 # ===============================
-# CALCULATE REAL WEIGHTS FOR RISK MODEL
+# CALCULATE REAL WEIGHTS
 # ===============================
 failures = df_final["Num_Failures"]
 severity = df_final["Avg_Severity"]
@@ -49,7 +70,7 @@ w_sev  = cv_sev  / total_cv
 w_down = cv_down / total_cv
 
 # ===============================
-# NORMALIZATION FUNCTION
+# NORMALIZATION
 # ===============================
 def normalize(series):
     return (series - series.min()) / (series.max() - series.min() + 1e-12)
@@ -76,7 +97,6 @@ with st.sidebar:
     clusters = df_final["Cluster_Name"].unique()
     cluster_selected = st.selectbox("Selecciona un clúster:", clusters)
 
-    # BADGE
     if "HIGH" in cluster_selected.upper():
         risk_color = "#E74C3C"
         risk_text = "🔴 HIGH RISK"
@@ -101,17 +121,16 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    # Filter machines of cluster
     filtered_machines = df_final[df_final["Cluster_Name"] == cluster_selected]["Machine"].unique()
     machine_selected = st.selectbox("Selecciona una máquina:", filtered_machines)
 
 # -------------------------------------
-# GET SELECTED MACHINE ROW
+# GET MACHINE ROW
 # -------------------------------------
 m = df_final[df_final["Machine"] == machine_selected].iloc[0]
 
 # ===============================
-# TABS (COMPLETO)
+# TABS
 # ===============================
 tab1, tab2, tab3, tab4 = st.tabs([
     "📌 Máquina",
@@ -134,7 +153,6 @@ with tab1:
 
     st.markdown("---")
 
-    # Historical failures
     machine_hist = df_events[df_events["Machine Name"] == machine_selected].copy()
     if machine_hist.empty:
         st.warning("⚠️ No hay historial de fallas para esta máquina.")
@@ -146,7 +164,7 @@ with tab1:
             machine_hist.groupby("YearMonth").size().reset_index(name="Failures")
         )
 
-        forecast_value = m["Weekly_Prediction"]
+        forecast_value = compute_weekly_prediction(machine_selected, df_events)
         future_date = (machine_hist["Date"].max() + pd.DateOffset(weeks=1)).strftime("%Y-%m")
 
         fig_m = go.Figure()
@@ -170,15 +188,15 @@ with tab1:
 
         fig_m.update_layout(title=f"Fallas históricas + predicción ({machine_selected})")
         st.plotly_chart(fig_m, use_container_width=True)
+
 # ===============================
-# 📈 HISTÓRICO + FORECAST (CLÚSTER COMPLETO)
+# CLUSTER FORECAST
 # ===============================
 st.markdown("### 📈 Tendencia Histórica y Predicción de Fallas (Clúster)")
 
 cluster_df = df_final[df_final["Cluster_Name"] == cluster_selected]
 cluster_machines = cluster_df["Machine"].unique()
 
-# Filtrar eventos del clúster
 cluster_events = df_events[df_events["Machine Name"].isin(cluster_machines)].copy()
 
 if cluster_events.empty:
@@ -191,8 +209,11 @@ else:
         cluster_events.groupby("YearMonth").size().reset_index(name="Failures")
     )
 
-    # Forecast = suma de predicciones del clúster
-    cluster_forecast = cluster_df["Weekly_Prediction"].sum()
+    cluster_forecast = sum(
+        compute_weekly_prediction(mach, df_events)
+        for mach in cluster_machines
+    )
+
     future_cluster_date = (
         cluster_events["Date"].max() + pd.DateOffset(weeks=1)
     ).strftime("%Y-%m")
@@ -225,6 +246,7 @@ else:
     )
 
     st.plotly_chart(fig_c, use_container_width=True)
+
 # ===============================
 # TAB 2 — CLUSTER VIEW
 # ===============================
@@ -288,11 +310,13 @@ st.plotly_chart(fig_gauge, use_container_width=True)
 # ======================================================
 st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
 
-pred_fail_real = float(m["Weekly_Prediction"])
+pred_fail_real = compute_weekly_prediction(machine_selected, df_events)
 maint_days = m["Maintenance_Recommended"]
 
-eq_type_machine = df_events[df_events["Machine Name"] == machine_selected]["EQ Type"].mode()[0] \
+eq_type_machine = (
+    df_events[df_events["Machine Name"] == machine_selected]["EQ Type"].mode()[0]
     if machine_selected in df_events["Machine Name"].values else "N/A"
+)
 
 colA, colB = st.columns(2)
 
@@ -330,7 +354,6 @@ with colD:
     </div>
     """, unsafe_allow_html=True)
 
-# Alert status
 if risk_percent > 70:
     st.markdown("🚨 <b>Alerta crítica:</b> probabilidad alta de falla.", unsafe_allow_html=True)
 elif risk_percent > 40:
