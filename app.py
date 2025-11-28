@@ -221,7 +221,7 @@ with tab1:
 # 📅 PLAN DE MANTENIMIENTO RECOMENDADO — CARD STYLE
 # =====================================================
 
-st.markdown("## 🛠️ Plan de Mantenimiento Recomendado")
+
 st.markdown(f"### 📌 Resumen de Mantenimiento para **{machine_selected}**")
 st.markdown("")
 
